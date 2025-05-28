@@ -32,12 +32,20 @@ library lang
                     , Evaluator
                     , Env
                     , Value
+                    , DeBruijn
+                    , DBEnv
                     , Interp.Expr
                     , Interp.Stmt
                     , Interp.Prog
+                    , Interp.DBExpr
+                    , Interp.DBStmt
+                    , Interp.DBProg
                     , TypeCheck.Expr
                     , TypeCheck.Stmt
                     , TypeCheck.Prog
+                    , TypeCheck.DBExpr
+                    , TypeCheck.DBStmt
+                    , TypeCheck.DBProg
 
     build-depends:    grammar
                     , containers
@@ -63,6 +71,7 @@ test-suite test
     other-modules:    InterpTests
                     , TypeCheckTests
                     , BogusTests
+                    , DeBruijnTests
 
     build-depends:    grammar
                     , lang

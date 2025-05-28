@@ -1,6 +1,6 @@
-val x = 3;
-val y = 5;
+val x = suc (suc (suc zero));
+val y = suc (suc (suc (suc (suc zero))));
 fun orFalse (a : bool) = a || False;
-val z = x + y < 10;
+val z = x + y < suc (suc (suc (suc (suc (suc (suc (suc (suc (suc zero)))))))));
 
-orFalse z
+orFalse (z)

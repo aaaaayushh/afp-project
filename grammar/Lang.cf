@@ -11,7 +11,7 @@ Program. Program ::= [Stmt] Exp ;
 
 -- TYPES --------------------------------------------------------------
 
-TInt.  Type1 ::= "int";
+TNat.  Type1 ::= "nat";
 TBool. Type1 ::= "bool";
 
 _. Type2 ::= "(" Type ")";
@@ -25,13 +25,13 @@ SFun. Stmt ::= "fun" Ident "(" Ident ":" Type ") =" Exp ;
 
 -- EXPRESSIONS --------------------------------------------------------
 
--- Arithmetic
-EInt. Exp7  ::= Integer;
+-- Natural numbers
+EZero. Exp7  ::= "zero";
+ESuc.  Exp7  ::= "suc" Exp7;
 
+-- Arithmetic (only addition and multiplication for natural numbers)
 EMul. Exp6  ::= Exp6 "*" Exp7;
-EDiv. Exp6  ::= Exp6 "/" Exp7;
 EAdd. Exp5  ::= Exp5 "+" Exp6;
-ESub. Exp5  ::= Exp5 "-" Exp6;
 
 -- Booleans
 ETrue.  Exp3  ::= "True";
