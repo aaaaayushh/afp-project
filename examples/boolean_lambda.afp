@@ -1,0 +1,2 @@
+fun test (predicate : nat -> bool) = predicate (suc (suc zero));
+test (\n -> n == suc (suc zero)) 

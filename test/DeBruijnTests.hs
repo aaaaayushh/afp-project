@@ -3,15 +3,15 @@ module DeBruijnTests where
 import Control.Exception (evaluate)
 import DBEnv
 import DeBruijn
-import qualified Interp.DBExpr as DBE
+import Interp.DBExpr qualified as DBE
 import Lang.Abs
 import Test.Hspec
-import qualified TypeCheck.DBExpr as DBTC
-import Value
+import TypeCheck.DBExpr qualified as DBTC
+import Value qualified as V
 
 -- Helper function to create VNat values easily
-nat :: Integer -> Value
-nat = VNat . toNat
+nat :: Integer -> V.Value
+nat = V.VNat . V.toNat
 
 -- Test conversion from named expressions to De Bruijn
 conversionTest :: String -> Exp -> DBExp -> Spec
@@ -20,7 +20,7 @@ conversionTest desc namedExp expectedDB =
     toDB [] namedExp `shouldBe` expectedDB
 
 -- Test De Bruijn expression evaluation
-dbInterpTest :: String -> DBExp -> Value -> Spec
+dbInterpTest :: String -> DBExp -> V.Value -> Spec
 dbInterpTest desc dbExp expected =
   it desc $ do
     DBE.interp dbExp (emptyDB, emptyFun) `shouldBe` Right expected
@@ -30,6 +30,12 @@ dbTypeTest :: String -> DBExp -> Type -> Spec
 dbTypeTest desc dbExp expectedType =
   it desc $ do
     DBTC.infer dbExp (emptyDB, emptyFun) `shouldBe` Right expectedType
+
+-- Test De Bruijn bidirectional type checking
+dbCheckTest :: String -> DBExp -> Type -> Spec
+dbCheckTest desc dbExp expectedType =
+  it desc $ do
+    DBTC.check dbExp expectedType (emptyDB, emptyFun) `shouldBe` Right ()
 
 -- Test shift operation
 shiftTest :: String -> Int -> Int -> DBExp -> DBExp -> Spec
@@ -66,19 +72,21 @@ test = hspec $ do
       (ELet (Ident "x") EZero (EVar (Ident "x")))
       (DBLet DBZero (DBVar 0))
 
-    it "variable with empty context should throw error" $ do
-      evaluate (toDB [] (EVar (Ident "x"))) `shouldThrow` anyException
+    conversionTest
+      "unbound variable converts to function reference"
+      (EVar (Ident "x"))
+      (DBFunRef (Ident "x"))
 
   describe "De Bruijn Expression Evaluation" $ do
     dbInterpTest
       "DBZero evaluates to VNat Zero"
       DBZero
-      (VNat Zero)
+      (V.VNat V.Zero)
 
     dbInterpTest
       "DBSuc DBZero evaluates to VNat (Suc Zero)"
       (DBSuc DBZero)
-      (VNat (Suc Zero))
+      (V.VNat (V.Suc V.Zero))
 
     dbInterpTest
       "DBAdd works correctly"
@@ -93,12 +101,12 @@ test = hspec $ do
     dbInterpTest
       "DBTrue evaluates correctly"
       DBTrue
-      (VBool True)
+      (V.VBool True)
 
     dbInterpTest
       "DBFalse evaluates correctly"
       DBFalse
-      (VBool False)
+      (V.VBool False)
 
     dbInterpTest
       "DBLet with variable reference works"
@@ -108,6 +116,18 @@ test = hspec $ do
       "nested DBLet works correctly"
       (DBLet (DBSuc DBZero) (DBLet (DBSuc (DBSuc DBZero)) (DBAdd (DBVar 1) (DBVar 0))))
       (nat 3) -- let x = 1 in let y = 2 in x + y = 3
+
+    -- Test curried function application step by step
+    dbInterpTest
+      "curried addition function works"
+      (DBApp (DBLam (DBAdd (DBVar 0) (DBSuc DBZero))) (DBSuc (DBSuc DBZero)))
+      (nat 3) -- (\x -> x + 1) 2 = 3
+
+    -- Test lambda with boolean operations
+    dbInterpTest
+      "lambda with boolean logic works"
+      (DBApp (DBLam (DBNot (DBVar 0))) DBTrue)
+      (V.VBool False) -- (\x -> !x) True = False
   describe "De Bruijn Type Checking" $ do
     dbTypeTest
       "DBZero has type TNat"
@@ -134,6 +154,40 @@ test = hspec $ do
       (DBLet DBZero (DBVar 0))
       TNat
 
+  describe "Lambda Expression Tests" $ do
+    -- Test lambda conversion to De Bruijn
+    conversionTest
+      "lambda expression converts correctly"
+      (ELam (Ident "x") (EAdd (EVar (Ident "x")) (ESuc EZero)))
+      (DBLam (DBAdd (DBVar 0) (DBSuc DBZero)))
+
+    -- Test lambda evaluation through function application
+    dbInterpTest
+      "lambda function application works"
+      (DBApp (DBLam (DBAdd (DBVar 0) (DBSuc DBZero))) (DBSuc (DBSuc DBZero)))
+      (nat 3) -- (\x -> x + 1) 2 = 3
+
+    -- Test nested lambda
+    dbInterpTest
+      "simple nested lambda application works"
+      (DBApp (DBLam (DBApp (DBLam (DBVar 0)) (DBVar 0))) (DBSuc DBZero))
+      (nat 1) -- (\x -> (\y -> y) x) 1 = 1
+
+    -- Test bidirectional type checking of lambdas
+    dbCheckTest
+      "lambda can be checked against function type"
+      (DBLam (DBAdd (DBVar 0) (DBSuc DBZero)))
+      (TFun TNat TNat) -- \x -> x + 1 : nat -> nat
+    dbCheckTest
+      "nested lambda can be checked against nested function type"
+      (DBLam (DBLam (DBAdd (DBVar 1) (DBVar 0))))
+      (TFun TNat (TFun TNat TNat)) -- \x -> \y -> x + y : nat -> nat -> nat
+
+    -- Test that lambda type checking works in let bindings
+    dbInterpTest
+      "lambda in let binding works"
+      (DBLet (DBLam (DBMul (DBVar 0) (DBVar 0))) (DBApp (DBVar 0) (DBSuc (DBSuc (DBSuc DBZero)))))
+      (nat 9) -- let square = \x -> x * x in square 3 = 9
   describe "De Bruijn Shift Operation" $ do
     shiftTest
       "shift variable below cutoff unchanged"
@@ -170,6 +224,21 @@ test = hspec $ do
       (DBLet DBZero (DBVar 1))
       (DBLet DBZero (DBVar 2))
 
+    -- Test shift operations on lambdas
+    shiftTest
+      "shift in lambda increases cutoff for body"
+      0
+      1
+      (DBLam (DBVar 0))
+      (DBLam (DBVar 0))
+
+    shiftTest
+      "shift in lambda affects free variables in body"
+      0
+      1
+      (DBLam (DBVar 1))
+      (DBLam (DBVar 2))
+
   describe "De Bruijn Substitution Operation" $ do
     substTest
       "substitute exact match"
@@ -198,3 +267,18 @@ test = hspec $ do
       (DBVar 0)
       (DBLet DBZero (DBVar 1))
       (DBLet DBZero (DBVar 1))
+
+    -- Test substitution operations on lambdas
+    substTest
+      "substitute in lambda body with proper shifting"
+      0
+      (DBSuc DBZero)
+      (DBLam (DBVar 1))
+      (DBLam (DBSuc DBZero))
+
+    substTest
+      "substitute bound variable in lambda (should not substitute)"
+      0
+      (DBSuc DBZero)
+      (DBLam (DBVar 0))
+      (DBLam (DBVar 0))

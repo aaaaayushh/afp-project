@@ -1,0 +1,2 @@
+fun apply (f : nat -> nat) = f (suc (suc zero));
+apply (\n -> n + suc zero) 

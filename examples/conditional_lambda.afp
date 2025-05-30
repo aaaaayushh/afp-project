@@ -1,0 +1,2 @@
+fun applier (f : nat -> nat) = f (suc (suc zero));
+applier (\n -> if n == zero then suc n else n * n) 

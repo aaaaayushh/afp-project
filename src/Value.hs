@@ -10,6 +10,7 @@ import Lang.Abs
 data Value
   = VNat Nat
   | VBool Bool
+  | VLam Closure -- Add lambda values
   deriving (Show, Eq)
 
 data Nat
@@ -17,7 +18,9 @@ data Nat
   | Suc Nat
   deriving (Show, Eq)
 
-data Closure = DBFun DBExp -- Use De Bruijn expression
+data Closure
+  = DBFun DBExp -- Use De Bruijn expression for lambda body
+  | NamedFun Ident -- For named functions defined in statements
   deriving (Show, Eq)
 
 data TClosure = TFun Type Type

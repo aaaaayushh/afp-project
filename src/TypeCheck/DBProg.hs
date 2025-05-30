@@ -4,8 +4,8 @@ import DBEnv
 import DeBruijn
 import Evaluator
 import Lang.Abs (Program (..), Stmt (..), Type)
-import qualified TypeCheck.DBExpr as E
-import qualified TypeCheck.DBStmt as S
+import TypeCheck.DBExpr qualified as E
+import TypeCheck.DBStmt qualified as S
 import Value (TClosure)
 
 -- Convert a list of statements to De Bruijn form for type checking

@@ -127,10 +127,23 @@ interp (EVar x) (vars, _) =
     Nothing -> throw $ "Variable " ++ show x ++ " is not bound"
 -- Functions
 interp (EApp f e) env@(vars, funs) = do
-  case find f funs of
-    Just (DBFun body) -> do
-      arg <- interp e env
-      -- For now, we'll need to convert this to work with De Bruijn
-      -- This is a temporary fix - we should use the De Bruijn interpreter
-      error "Old interpreter should not be used with De Bruijn closures"
-    _ -> throw "Arguments can only be applied to functions"
+  case f of
+    EVar fname ->
+      case find fname funs of
+        Just (DBFun body) -> do
+          arg <- interp e env
+          -- For now, we'll need to convert this to work with De Bruijn
+          -- This is a temporary fix - we should use the De Bruijn interpreter
+          error "Old interpreter should not be used with De Bruijn closures"
+        Just (NamedFun fname') -> do
+          arg <- interp e env
+          error "Named function closures not yet implemented in old interpreter"
+        Nothing -> throw $ "Function " ++ show fname ++ " not found"
+    _ -> do
+      -- For lambda expressions and complex function expressions
+      fval <- interp f env
+      case fval of
+        VLam closure -> do
+          arg <- interp e env
+          error "Lambda evaluation not implemented in old interpreter"
+        _ -> throw "Cannot apply non-function"

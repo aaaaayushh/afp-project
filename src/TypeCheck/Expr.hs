@@ -7,9 +7,9 @@ import Lang.Abs
     Ident,
     Type (..),
   )
-import Value (TClosure (TFun))
+import Value qualified as V
 
-arithmetic :: (Exp, Exp) -> (Env Type, Env TClosure) -> Result Type
+arithmetic :: (Exp, Exp) -> (Env Type, Env V.TClosure) -> Result Type
 arithmetic (e1, e2) env = do
   t1 <- infer e1 env
   t2 <- infer e2 env
@@ -17,7 +17,7 @@ arithmetic (e1, e2) env = do
     (TNat, TNat) -> return TNat
     _ -> throw "Arithmetic can only be performed on natural numbers"
 
-logic :: (Exp, Exp) -> (Env Type, Env TClosure) -> Result Type
+logic :: (Exp, Exp) -> (Env Type, Env V.TClosure) -> Result Type
 logic (e1, e2) env = do
   t1 <- infer e1 env
   t2 <- infer e2 env
@@ -25,7 +25,7 @@ logic (e1, e2) env = do
     (TBool, TBool) -> return TBool
     _ -> throw "Boolean operations can only be performed on booleans"
 
-comparison :: (Exp, Exp) -> (Env Type, Env TClosure) -> Result Type
+comparison :: (Exp, Exp) -> (Env Type, Env V.TClosure) -> Result Type
 comparison (e1, e2) env = do
   t1 <- infer e1 env
   t2 <- infer e2 env
@@ -35,7 +35,7 @@ comparison (e1, e2) env = do
 
 -- EXPRESSION TYPE CHECKER -----------------------------------------------------------
 
-infer :: Exp -> (Env Type, Env TClosure) -> Result Type
+infer :: Exp -> (Env Type, Env V.TClosure) -> Result Type
 -- Natural numbers
 infer EZero _ = return TNat
 infer (ESuc e) env = do
@@ -90,10 +90,23 @@ infer (EVar x) (vars, _) =
     Nothing -> throw $ "Variable " ++ show x ++ " is not bound"
 -- Functions
 infer (EApp f e) env@(_, funs) = do
-  case find f funs of
-    Just (TFun targ tret) -> do
-      eT <- infer e env
-      if eT == targ
-        then return tret
-        else throw "Function argument type mismatch"
-    _ -> throw "Cannot call non-function"
+  case f of
+    EVar fname ->
+      case find fname funs of
+        Just (V.TFun targ tret) -> do
+          eT <- infer e env
+          if eT == targ
+            then return tret
+            else throw "Function argument type mismatch"
+        Nothing -> throw $ "Function " ++ show fname ++ " not found"
+    _ -> do
+      -- For lambda expressions and complex function expressions
+      -- We need to infer the type of the function and check if it's callable
+      ftype <- infer f env
+      case ftype of
+        TFun targ tret -> do
+          eT <- infer e env
+          if eT == targ
+            then return tret
+            else throw "Function argument type mismatch"
+        _ -> throw "Cannot apply non-function"

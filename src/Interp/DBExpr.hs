@@ -4,7 +4,7 @@ import DBEnv
 import DeBruijn
 import Evaluator
 import Value (Closure (..), Nat (..), Value (..))
-import qualified Value
+import Value qualified
 
 -- Helper functions for natural number arithmetic (same as before)
 addNat :: Nat -> Nat -> Nat
@@ -63,6 +63,11 @@ interp (DBVar i) (vals, _) =
   case lookupDB i vals of
     Just val -> return val
     Nothing -> throw $ "Variable index " ++ show i ++ " out of bounds"
+-- Function references
+interp (DBFunRef f) (_, funs) =
+  case lookupFun f funs of
+    Just closure -> return $ VLam closure
+    Nothing -> throw $ "Function " ++ show f ++ " not found"
 -- Natural numbers
 interp DBZero _ = return $ VNat Zero
 interp (DBSuc e) env = do
@@ -130,10 +135,20 @@ interp (DBLet e body) env@(vals, funs) = do
   val <- interp e env
   interp body (extendDB val vals, funs)
 
+-- Lambda expressions
+interp (DBLam body) env = return $ VLam (DBFun body)
 -- Function application
 interp (DBApp f e) env@(vals, funs) = do
-  case lookupFun f funs of
-    Just (DBFun body) -> do
-      arg <- interp e env
+  fval <- interp f env
+  arg <- interp e env
+  case fval of
+    VLam (DBFun body) -> do
+      -- Apply lambda: substitute argument for De Bruijn index 0
       interp body (extendDB arg vals, funs)
-    Nothing -> throw $ "Function " ++ show f ++ " not found"
+    VLam (NamedFun fname) -> do
+      -- Look up named function and apply
+      case lookupFun fname funs of
+        Just (DBFun body) ->
+          interp body (extendDB arg vals, funs)
+        Nothing -> throw $ "Named function " ++ show fname ++ " not found"
+    _ -> throw "Cannot apply non-function"

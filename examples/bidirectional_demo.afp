@@ -1,0 +1,2 @@
+fun transform (f : nat -> nat) = f (suc (suc (suc zero)));
+transform (\n -> n + n) 

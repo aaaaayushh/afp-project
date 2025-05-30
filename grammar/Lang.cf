@@ -13,6 +13,7 @@ Program. Program ::= [Stmt] Exp ;
 
 TNat.  Type1 ::= "nat";
 TBool. Type1 ::= "bool";
+TFun.  Type  ::= Type1 "->" Type;
 
 _. Type2 ::= "(" Type ")";
 _. Type1 ::= Type2;
@@ -24,6 +25,9 @@ SLet. Stmt ::= "val" Ident "=" Exp ;
 SFun. Stmt ::= "fun" Ident "(" Ident ":" Type ") =" Exp ;
 
 -- EXPRESSIONS --------------------------------------------------------
+
+-- Lambda expressions
+ELam. Exp8 ::= "\\" Ident "->" Exp;
 
 -- Natural numbers
 EZero. Exp7  ::= "zero";
@@ -56,7 +60,7 @@ ELet. Exp8 ::= "let" Ident "=" Exp "in" Exp;
 EVar. Exp8 ::= Ident;
 
 -- Functions
-EApp. Exp8 ::= Ident Exp7;
+EApp. Exp8 ::= Exp8 Exp7;
 
 -- This part sets up the order of operation
 _. Exp8 ::= "(" Exp ")" ;

@@ -1,0 +1,2 @@
+val lambda_without_context = \n -> n + suc zero;
+lambda_without_context 
