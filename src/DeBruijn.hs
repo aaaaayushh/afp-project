@@ -1,13 +1,25 @@
 module DeBruijn where
 
 import Data.List (elemIndex)
-import Lang.Abs (Exp (..), Ident, Stmt (..), Type)
+import Lang.Abs (Exp (..), Ident (..), Stmt (..), Type (..))
+
+-- De Bruijn type representations
+data DBType
+  = DBTNat
+  | DBTBool
+  | DBTUniverse
+  | DBTFun DBType DBType -- Simple function type A -> B
+  | DBTDepFun DBType DBType -- Dependent function type (x : A) -> B(x)
+  | DBTVar Int -- Type-level De Bruijn variable
+  deriving (Show, Eq)
 
 -- De Bruijn expression types
 data DBExp
   = DBVar Int -- De Bruijn index
   | DBFunRef Ident -- Named function reference (bypasses De Bruijn indexing)
   | DBLam DBExp -- lambda expression (parameter type omitted in DB)
+  | DBTypedLam DBType DBExp -- typed lambda expression \(x : T) -> e
+  | DBType DBType -- Types as expressions
   | DBZero
   | DBSuc DBExp
   | DBAdd DBExp DBExp
@@ -29,11 +41,29 @@ data DBExp
 
 data DBStmt
   = DBSLet DBExp -- val x = e (variable name removed)
-  | DBSFun Ident Type DBExp -- fun f(x:T) = e (parameter name removed)
+  | DBSFun Ident DBType DBExp -- fun f(x:T) = e (parameter name removed, type converted to DBType)
   deriving (Show, Eq)
 
 -- Context for conversion (maps variable names to De Bruijn indices)
 type Context = [Ident]
+
+-- Convert Type to DBType
+typeToDBType :: Context -> Type -> DBType
+typeToDBType ctx TNat = DBTNat
+typeToDBType ctx TBool = DBTBool
+typeToDBType ctx TUniverse = DBTUniverse
+typeToDBType ctx (TFun t1 t2) = DBTFun (typeToDBType ctx t1) (typeToDBType ctx t2)
+typeToDBType ctx (TDepFun x t1 t2) = DBTDepFun (typeToDBType ctx t1) (typeToDBType (x : ctx) t2)
+
+-- Convert DBType back to Type (for compatibility with existing code)
+-- Note: This loses De Bruijn variable information and dependent function binding names
+dbTypeToType :: DBType -> Type
+dbTypeToType DBTNat = TNat
+dbTypeToType DBTBool = TBool
+dbTypeToType DBTUniverse = TUniverse
+dbTypeToType (DBTFun t1 t2) = TFun (dbTypeToType t1) (dbTypeToType t2)
+dbTypeToType (DBTDepFun t1 t2) = TDepFun (Ident "_") (dbTypeToType t1) (dbTypeToType t2) -- Use dummy name
+dbTypeToType (DBTVar _) = error "Cannot convert type variable to Type (context lost)"
 
 -- Convert named expression to De Bruijn
 toDB :: Context -> Exp -> DBExp
@@ -41,7 +71,9 @@ toDB ctx (EVar x) =
   case elemIndex x ctx of
     Just i -> DBVar i
     Nothing -> DBFunRef x -- Treat unbound variables as function references
+toDB ctx (EType t) = DBType (typeToDBType ctx t)
 toDB ctx (ELam x e) = DBLam (toDB (x : ctx) e)
+toDB ctx (ETypedLam x t e) = DBTypedLam (typeToDBType ctx t) (toDB (x : ctx) e)
 toDB ctx EZero = DBZero
 toDB ctx (ESuc e) = DBSuc (toDB ctx e)
 toDB ctx (EAdd e1 e2) = DBAdd (toDB ctx e1) (toDB ctx e2)
@@ -63,7 +95,19 @@ toDB ctx (EApp f e) = DBApp (toDB ctx f) (toDB ctx e)
 -- Convert statements to De Bruijn
 toDBStmt :: Context -> Stmt -> DBStmt
 toDBStmt ctx (SLet x e) = DBSLet (toDB ctx e)
-toDBStmt ctx (SFun f x t e) = DBSFun f t (toDB (x : ctx) e)
+toDBStmt ctx (SFun f x t e) = DBSFun f (typeToDBType (x : ctx) t) (toDB (x : ctx) e)
+
+-- Shift function for types: shift n k t
+-- Increases all type variable indices >= n by k
+shiftType :: Int -> Int -> DBType -> DBType
+shiftType n k DBTNat = DBTNat
+shiftType n k DBTBool = DBTBool
+shiftType n k DBTUniverse = DBTUniverse
+shiftType n k (DBTFun t1 t2) = DBTFun (shiftType n k t1) (shiftType n k t2)
+shiftType n k (DBTDepFun t1 t2) = DBTDepFun (shiftType n k t1) (shiftType (n + 1) k t2)
+shiftType n k (DBTVar i)
+  | i >= n = DBTVar (i + k)
+  | otherwise = DBTVar i
 
 -- Shift function: shift n k e
 -- Increases all indices >= n by k
@@ -73,6 +117,8 @@ shift n k (DBVar i)
   | otherwise = DBVar i
 shift n k (DBFunRef f) = DBFunRef f
 shift n k (DBLam e) = DBLam (shift (n + 1) k e)
+shift n k (DBTypedLam t e) = DBTypedLam (shiftType n k t) (shift (n + 1) k e)
+shift n k (DBType t) = DBType (shiftType n k t)
 shift n k DBZero = DBZero
 shift n k (DBSuc e) = DBSuc (shift n k e)
 shift n k (DBAdd e1 e2) = DBAdd (shift n k e1) (shift n k e2)
@@ -91,6 +137,19 @@ shift n k (DBIf c t e) = DBIf (shift n k c) (shift n k t) (shift n k e)
 shift n k (DBLet e body) = DBLet (shift n k e) (shift (n + 1) k body)
 shift n k (DBApp f e) = DBApp (shift n k f) (shift n k e)
 
+-- Substitution in types: substType n u t
+-- Replace type variable n with u, decrement indices > n
+substType :: Int -> DBExp -> DBType -> DBType
+substType n u DBTNat = DBTNat
+substType n u DBTBool = DBTBool
+substType n u DBTUniverse = DBTUniverse
+substType n u (DBTFun t1 t2) = DBTFun (substType n u t1) (substType n u t2)
+substType n u (DBTDepFun t1 t2) = DBTDepFun (substType n u t1) (substType (n + 1) (shift 0 1 u) t2)
+substType n u (DBTVar i)
+  | i == n = error "Cannot substitute expression into type variable (need value-to-type conversion)"
+  | i > n = DBTVar (i - 1)
+  | otherwise = DBTVar i
+
 -- Substitution: subst n u e
 -- Replace variable n with u, decrement indices > n
 subst :: Int -> DBExp -> DBExp -> DBExp
@@ -100,6 +159,8 @@ subst n u (DBVar i)
   | otherwise = DBVar i
 subst n u (DBFunRef f) = DBFunRef f
 subst n u (DBLam e) = DBLam (subst (n + 1) (shift 0 1 u) e)
+subst n u (DBTypedLam t e) = DBTypedLam (substType n u t) (subst (n + 1) (shift 0 1 u) e)
+subst n u (DBType t) = DBType (substType n u t)
 subst n u DBZero = DBZero
 subst n u (DBSuc e) = DBSuc (subst n u e)
 subst n u (DBAdd e1 e2) = DBAdd (subst n u e1) (subst n u e2)

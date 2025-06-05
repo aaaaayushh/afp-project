@@ -1,10 +1,10 @@
 module TypeCheck.DBStmt where
 
 import DBEnv
-import DeBruijn
+import DeBruijn (DBStmt (..), dbTypeToType)
 import Evaluator
 import Lang.Abs (Type)
-import qualified TypeCheck.DBExpr as E
+import TypeCheck.DBExpr qualified as E
 import Value (TClosure (TFun))
 
 -- DE BRUIJN STATEMENT TYPE CHECKER --------------------------------------------------
@@ -17,5 +17,6 @@ infer (DBSLet e) env@(types, funs) = do
 
 -- Function declaration: fun f(x:T) = e
 infer (DBSFun f argType e) env@(types, funs) = do
-  retType <- E.infer e (extendDB argType types, funs)
-  return (types, bindFun f (TFun argType retType) funs)
+  let argTypeConverted = dbTypeToType argType
+  retType <- E.infer e (extendDB argTypeConverted types, funs)
+  return (types, bindFun f (TFun argTypeConverted retType) funs)

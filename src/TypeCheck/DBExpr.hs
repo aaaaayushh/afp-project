@@ -1,13 +1,29 @@
 module TypeCheck.DBExpr where
 
 import DBEnv
-import DeBruijn
+import DeBruijn (DBExp (..), DBType (..), dbTypeToType)
 import Evaluator
 import Lang.Abs (Type (..))
 import Value qualified as V
 
 -- Type checking environment
 type TyEnv = (DBEnv Type, FunEnv V.TClosure)
+
+-- Check that a type is well-formed (all components have correct types)
+checkTypeWellFormed :: DBType -> TyEnv -> Result ()
+checkTypeWellFormed DBTNat _ = return ()
+checkTypeWellFormed DBTBool _ = return ()
+checkTypeWellFormed DBTUniverse _ = return ()
+checkTypeWellFormed (DBTFun t1 t2) env = do
+  checkTypeWellFormed t1 env
+  checkTypeWellFormed t2 env
+checkTypeWellFormed (DBTDepFun t1 t2) env@(types, funs) = do
+  checkTypeWellFormed t1 env
+  -- For dependent functions, check the codomain in extended context
+  -- We need a dummy value for the context, but since we're only checking well-formedness,
+  -- we can use a placeholder
+  checkTypeWellFormed t2 (extendDB TUniverse types, funs) -- Placeholder type
+checkTypeWellFormed (DBTVar _) _ = return () -- Type variables are assumed well-formed
 
 -- Bidirectional type inference
 infer :: DBExp -> TyEnv -> Result Type
@@ -22,8 +38,17 @@ infer (DBFunRef f) (_, funs) =
     Just tclosure -> return $ case tclosure of
       V.TFun argType retType -> TFun argType retType
     Nothing -> throw $ "Function " ++ show f ++ " not found"
+-- Types as expressions have type U (universe)
+infer (DBType t) env = do
+  checkTypeWellFormed t env
+  return TUniverse
 -- Lambda expressions cannot be inferred without context
 infer (DBLam _) _ = throw "Cannot infer type of lambda expression without annotation"
+-- Typed lambda expressions can be inferred
+infer (DBTypedLam argType body) env@(types, funs) = do
+  let argTypeConverted = dbTypeToType argType
+  retType <- infer body (extendDB argTypeConverted types, funs)
+  return $ TFun argTypeConverted retType
 -- Natural numbers
 infer DBZero _ = return TNat
 infer (DBSuc e) env = do
@@ -106,6 +131,13 @@ check :: DBExp -> Type -> TyEnv -> Result ()
 check (DBLam body) (TFun targ tret) env@(types, funs) = do
   check body tret (extendDB targ types, funs)
 check (DBLam _) t _ = throw $ "Lambda expression cannot have type " ++ show t
+-- Typed lambda expressions
+check (DBTypedLam argType body) (TFun targ tret) env@(types, funs) = do
+  let argTypeConverted = dbTypeToType argType
+  if argTypeConverted == targ
+    then check body tret (extendDB argTypeConverted types, funs)
+    else throw $ "Type mismatch: lambda expects " ++ show argTypeConverted ++ " but got " ++ show targ
+check (DBTypedLam _ _) t _ = throw $ "Typed lambda expression cannot have type " ++ show t
 -- For other expressions, infer and compare
 check e expected env = do
   actual <- infer e env

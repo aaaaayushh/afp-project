@@ -11,9 +11,11 @@ Program. Program ::= [Stmt] Exp ;
 
 -- TYPES --------------------------------------------------------------
 
-TNat.  Type1 ::= "nat";
-TBool. Type1 ::= "bool";
-TFun.  Type  ::= Type1 "->" Type;
+TNat.    Type1 ::= "nat";
+TBool.   Type1 ::= "bool";
+TUniverse. Type1 ::= "U";
+TFun.    Type  ::= Type1 "->" Type;
+TDepFun. Type  ::= "(" Ident ":" Type ")" "->" Type;
 
 _. Type2 ::= "(" Type ")";
 _. Type1 ::= Type2;
@@ -26,8 +28,12 @@ SFun. Stmt ::= "fun" Ident "(" Ident ":" Type ") =" Exp ;
 
 -- EXPRESSIONS --------------------------------------------------------
 
+-- Types as expressions
+EType. Exp8 ::= Type;
+
 -- Lambda expressions
 ELam. Exp8 ::= "\\" Ident "->" Exp;
+ETypedLam. Exp8 ::= "\\" "(" Ident ":" Type ")" "->" Exp;
 
 -- Natural numbers
 EZero. Exp7  ::= "zero";

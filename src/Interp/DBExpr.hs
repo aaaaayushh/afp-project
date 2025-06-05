@@ -3,7 +3,7 @@ module Interp.DBExpr where
 import DBEnv
 import DeBruijn
 import Evaluator
-import Value (Closure (..), Nat (..), Value (..))
+import Value (Closure (..), Nat (..), Value (..), dbTypeToTypeValue)
 import Value qualified
 
 -- Helper functions for natural number arithmetic (same as before)
@@ -68,6 +68,8 @@ interp (DBFunRef f) (_, funs) =
   case lookupFun f funs of
     Just closure -> return $ VLam closure
     Nothing -> throw $ "Function " ++ show f ++ " not found"
+-- Types as expressions
+interp (DBType t) env = return $ VType (dbTypeToTypeValue t)
 -- Natural numbers
 interp DBZero _ = return $ VNat Zero
 interp (DBSuc e) env = do
@@ -137,6 +139,7 @@ interp (DBLet e body) env@(vals, funs) = do
 
 -- Lambda expressions
 interp (DBLam body) env = return $ VLam (DBFun body)
+interp (DBTypedLam _ body) env = return $ VLam (DBFun body) -- Ignore type annotation for now
 -- Function application
 interp (DBApp f e) env@(vals, funs) = do
   fval <- interp f env
