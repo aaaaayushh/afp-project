@@ -11,6 +11,7 @@ data Value
   = VNat Nat
   | VBool Bool
   | VLam Closure -- Add lambda values
+  | VU -- Universe value
   deriving (Show, Eq)
 
 data Nat
@@ -23,7 +24,9 @@ data Closure
   | NamedFun Ident -- For named functions defined in statements
   deriving (Show, Eq)
 
-data TClosure = TFun Type Type
+data TClosure
+  = TFun Type Type
+  | TDepFun Type Type -- For dependent functions in type context
   deriving (Show, Eq)
 
 -- Helper functions for easier Nat construction

@@ -34,15 +34,15 @@ library lang
                     , Value
                     , DeBruijn
                     , DBEnv
-                    , Interp.Expr
-                    , Interp.Stmt
-                    , Interp.Prog
+                    -- , Interp.Expr
+                    -- , Interp.Stmt
+                    -- , Interp.Prog
                     , Interp.DBExpr
                     , Interp.DBStmt
                     , Interp.DBProg
-                    , TypeCheck.Expr
-                    , TypeCheck.Stmt
-                    , TypeCheck.Prog
+                    -- , TypeCheck.Expr
+                    -- , TypeCheck.Stmt
+                    -- , TypeCheck.Prog
                     , TypeCheck.DBExpr
                     , TypeCheck.DBStmt
                     , TypeCheck.DBProg
@@ -72,6 +72,7 @@ test-suite test
                     , TypeCheckTests
                     , BogusTests
                     , DeBruijnTests
+                    , Phase1Tests
 
     build-depends:    grammar
                     , lang

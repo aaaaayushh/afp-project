@@ -3,11 +3,20 @@ module TypeCheck.DBExpr where
 import DBEnv
 import DeBruijn
 import Evaluator
-import Lang.Abs (Type (..))
+import Lang.Abs (Ident (..), Type (..))
 import Value qualified as V
 
 -- Type checking environment
 type TyEnv = (DBEnv Type, FunEnv V.TClosure)
+
+-- Convert DBType to Type for compatibility
+dbTypeToType :: DBType -> Type
+dbTypeToType DBTNat = TNat
+dbTypeToType DBTBool = TBool
+dbTypeToType DBTU = TU
+dbTypeToType (DBTFun a b) = TFun (dbTypeToType a) (dbTypeToType b)
+dbTypeToType (DBTDepFun a b) = TDepFun (Ident "x") (dbTypeToType a) (dbTypeToType b) -- Use dummy variable name
+dbTypeToType (DBTVar _) = error "Cannot convert type variable to concrete type"
 
 -- Bidirectional type inference
 infer :: DBExp -> TyEnv -> Result Type
@@ -21,9 +30,28 @@ infer (DBFunRef f) (_, funs) =
   case lookupFun f funs of
     Just tclosure -> return $ case tclosure of
       V.TFun argType retType -> TFun argType retType
+      V.TDepFun argType retType -> TDepFun (Ident "x") argType retType -- Use dummy variable name
     Nothing -> throw $ "Function " ++ show f ++ " not found"
 -- Lambda expressions cannot be inferred without context
 infer (DBLam _) _ = throw "Cannot infer type of lambda expression without annotation"
+-- Type-annotated lambda expressions
+infer (DBLamAnn domType body) env@(types, funs) = do
+  let domTypeConc = dbTypeToType domType
+  codType <- infer body (extendDB domTypeConc types, funs)
+  return $ TDepFun (Ident "x") domTypeConc codType -- Use dummy variable name
+  -- Universe type
+infer DBU _ = return TU
+-- Type expressions in the expression language
+infer DBExprNat _ = return TU
+infer DBExprBool _ = return TU
+infer (DBExprFun a b) env = do
+  check a TU env
+  check b TU env
+  return TU
+infer (DBExprDepFun a b) env = do
+  check a TU env
+  check b TU env
+  return TU
 -- Natural numbers
 infer DBZero _ = return TNat
 infer (DBSuc e) env = do
@@ -98,17 +126,60 @@ infer (DBApp f e) env = do
     TFun targ tret -> do
       check e targ env
       return tret
+    TDepFun _ targ tret -> do
+      check e targ env
+      return tret -- For now, don't do dependent substitution
     _ -> throw "Cannot apply non-function"
 
 -- Bidirectional type checking
 check :: DBExp -> Type -> TyEnv -> Result ()
+-- Universe type checking - types have type U
+check DBExprNat TU _ = return ()
+check DBExprBool TU _ = return ()
+check DBU TU _ = return ()
+check (DBExprFun a b) TU env = do
+  check a TU env
+  check b TU env
+check (DBExprDepFun a b) TU env@(types, funs) = do
+  check a TU env
+  check b TU env
+
 -- Lambda expressions are best checked against function types
 check (DBLam body) (TFun targ tret) env@(types, funs) = do
   check body tret (extendDB targ types, funs)
+check (DBLam body) (TDepFun _ targ tret) env@(types, funs) = do
+  check body tret (extendDB targ types, funs)
 check (DBLam _) t _ = throw $ "Lambda expression cannot have type " ++ show t
+-- Type-annotated lambda
+check (DBLamAnn domType body) (TFun targ tret) env@(types, funs) = do
+  let domTypeConc = dbTypeToType domType
+  if domTypeConc == targ
+    then check body tret (extendDB domTypeConc types, funs)
+    else throw "Lambda domain type mismatch"
+check (DBLamAnn domType body) (TDepFun _ targ tret) env@(types, funs) = do
+  let domTypeConc = dbTypeToType domType
+  if domTypeConc == targ
+    then check body tret (extendDB domTypeConc types, funs)
+    else throw "Lambda domain type mismatch"
 -- For other expressions, infer and compare
 check e expected env = do
   actual <- infer e env
   if actual == expected
     then return ()
     else throw $ "Type mismatch: expected " ++ show expected ++ " but got " ++ show actual
+
+-- Helper function to convert types to expressions for type checking
+typeToDBExp :: Type -> DBExp
+typeToDBExp TNat = DBExprNat
+typeToDBExp TBool = DBExprBool
+typeToDBExp TU = DBU
+typeToDBExp (TFun a b) = DBExprFun (typeToDBExp a) (typeToDBExp b)
+typeToDBExp (TDepFun _ a b) = DBExprDepFun (typeToDBExp a) (typeToDBExp b)
+
+-- Helper function to convert Type to DBType
+typeToDBType :: Type -> DBType
+typeToDBType TNat = DBTNat
+typeToDBType TBool = DBTBool
+typeToDBType TU = DBTU
+typeToDBType (TFun a b) = DBTFun (typeToDBType a) (typeToDBType b)
+typeToDBType (TDepFun _ a b) = DBTDepFun (typeToDBType a) (typeToDBType b)

@@ -68,6 +68,13 @@ interp (DBFunRef f) (_, funs) =
   case lookupFun f funs of
     Just closure -> return $ VLam closure
     Nothing -> throw $ "Function " ++ show f ++ " not found"
+-- Universe type
+interp DBU _ = return VU
+-- Type expressions evaluate to universe (for Church encoding)
+interp DBExprNat _ = return VU
+interp DBExprBool _ = return VU
+interp (DBExprFun a b) env = return VU -- Function types evaluate to universe
+interp (DBExprDepFun a b) env = return VU -- Dependent function types evaluate to universe
 -- Natural numbers
 interp DBZero _ = return $ VNat Zero
 interp (DBSuc e) env = do
@@ -137,6 +144,8 @@ interp (DBLet e body) env@(vals, funs) = do
 
 -- Lambda expressions
 interp (DBLam body) env = return $ VLam (DBFun body)
+-- Type-annotated lambda expressions (ignore type annotation at runtime)
+interp (DBLamAnn _ body) env = return $ VLam (DBFun body)
 -- Function application
 interp (DBApp f e) env@(vals, funs) = do
   fval <- interp f env
