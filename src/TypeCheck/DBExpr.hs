@@ -3,11 +3,18 @@ module TypeCheck.DBExpr where
 import DBEnv
 import DeBruijn
 import Evaluator
+import Interp.DBExpr (interp)
 import Lang.Abs (Ident (..), Type (..))
 import Value qualified as V
 
 -- Type checking environment
 type TyEnv = (DBEnv Type, FunEnv V.TClosure)
+
+-- Helper to convert a value back to a type
+valueToType :: V.Value -> Result Type
+valueToType (V.VType t) = return t
+valueToType V.VU = return TU -- Universe is a type
+valueToType v = throw $ "Expected a type, but got value: " ++ show v
 
 -- Convert DBType to Type for compatibility
 dbTypeToType :: DBType -> Type
@@ -17,6 +24,10 @@ dbTypeToType DBTU = TU
 dbTypeToType (DBTFun a b) = TFun (dbTypeToType a) (dbTypeToType b)
 dbTypeToType (DBTDepFun a b) = TDepFun (Ident "x") (dbTypeToType a) (dbTypeToType b) -- Use dummy variable name
 dbTypeToType (DBTVar _) = error "Cannot convert type variable to concrete type"
+-- Phase 2: Top/Bot and pair types
+dbTypeToType DBTTop = TTop
+dbTypeToType DBTBot = TBot
+dbTypeToType (DBTPair a b) = TPair (dbTypeToType a) (dbTypeToType b)
 
 -- Bidirectional type inference
 infer :: DBExp -> TyEnv -> Result Type
@@ -49,6 +60,14 @@ infer (DBExprFun a b) env = do
   check b TU env
   return TU
 infer (DBExprDepFun a b) env = do
+  check a TU env
+  check b TU env
+  return TU
+-- Phase 2: Top/Bot type expressions
+infer DBExprTop _ = return TU
+infer DBExprBot _ = return TU
+-- Phase 2: Pair type expressions
+infer (DBExprPair a b) env = do
   check a TU env
   check b TU env
   return TU
@@ -131,6 +150,52 @@ infer (DBApp f e) env = do
       return tret -- For now, don't do dependent substitution
     _ -> throw "Cannot apply non-function"
 
+-- Phase 2: Top/Bot values
+infer DBTt _ = return TTop
+infer DBMagic _ =
+  -- magic : (A : U) -> Bot -> A (polymorphic function)
+  -- For simplicity, we'll type it as Bot -> Bot for now
+  -- A full implementation would need proper polymorphism
+  return $ TFun TBot TBot
+-- Phase 2: Boolean eliminator
+infer (DBElimBool p t f b) env@(types, funs) = do
+  -- Check P : bool -> U
+  check p (TDepFun (Ident "_") TBool TU) env
+  -- Check b : bool
+  check b TBool env
+
+  -- Evaluate P(true) to get the type for the 'then' branch
+  true_branch_val <- interp (DBApp p DBTrue) (emptyDB, emptyFun)
+  true_branch_type <- valueToType true_branch_val
+  check t true_branch_type env
+
+  -- Evaluate P(false) to get the type for the 'else' branch
+  false_branch_val <- interp (DBApp p DBFalse) (emptyDB, emptyFun)
+  false_branch_type <- valueToType false_branch_val
+  check f false_branch_type env
+
+  -- The result type is P(b)
+  -- We can't know 'b' at compile time in general, but if it's a constant we can.
+  -- For now, let's try to evaluate it.
+  res_type_val <- interp (DBApp p b) (emptyDB, emptyFun)
+  valueToType res_type_val
+
+-- Phase 2: Pair types
+infer (DBPair a b) env = do
+  ta <- infer a env
+  tb <- infer b env
+  return $ TPair ta tb
+infer (DBFst p) env = do
+  tp <- infer p env
+  case tp of
+    TPair ta _ -> return ta
+    _ -> throw "fst can only be applied to pairs"
+infer (DBSnd p) env = do
+  tp <- infer p env
+  case tp of
+    TPair _ tb -> return tb
+    _ -> throw "snd can only be applied to pairs"
+
 -- Bidirectional type checking
 check :: DBExp -> Type -> TyEnv -> Result ()
 -- Universe type checking - types have type U
@@ -141,6 +206,13 @@ check (DBExprFun a b) TU env = do
   check a TU env
   check b TU env
 check (DBExprDepFun a b) TU env@(types, funs) = do
+  check a TU env
+  check b TU env
+-- Phase 2: Top/Bot type checking
+check DBExprTop TU _ = return ()
+check DBExprBot TU _ = return ()
+-- Phase 2: Pair type checking
+check (DBExprPair a b) TU env = do
   check a TU env
   check b TU env
 
@@ -175,6 +247,10 @@ typeToDBExp TBool = DBExprBool
 typeToDBExp TU = DBU
 typeToDBExp (TFun a b) = DBExprFun (typeToDBExp a) (typeToDBExp b)
 typeToDBExp (TDepFun _ a b) = DBExprDepFun (typeToDBExp a) (typeToDBExp b)
+-- Phase 2: Top/Bot and pair types
+typeToDBExp TTop = DBExprTop
+typeToDBExp TBot = DBExprBot
+typeToDBExp (TPair a b) = DBExprPair (typeToDBExp a) (typeToDBExp b)
 
 -- Helper function to convert Type to DBType
 typeToDBType :: Type -> DBType
@@ -183,3 +259,7 @@ typeToDBType TBool = DBTBool
 typeToDBType TU = DBTU
 typeToDBType (TFun a b) = DBTFun (typeToDBType a) (typeToDBType b)
 typeToDBType (TDepFun _ a b) = DBTDepFun (typeToDBType a) (typeToDBType b)
+-- Phase 2: Top/Bot and pair types
+typeToDBType TTop = DBTTop
+typeToDBType TBot = DBTBot
+typeToDBType (TPair a b) = DBTPair (typeToDBType a) (typeToDBType b)

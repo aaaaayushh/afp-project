@@ -44,26 +44,23 @@ test = hspec $ do
 
   describe "Phase 1: Types as Values" $ do
     tcTest "nat" TU
-    interpTest "nat" V.VU
+    interpTest "nat" (V.VType TNat)
     tcTest "bool" TU
-    interpTest "bool" V.VU
+    interpTest "bool" (V.VType TBool)
 
   describe "Phase 1: Function Types as Expressions" $ do
     tcTest "nat -> bool" TU
-    interpTest "nat -> bool" V.VU
+    interpTest "nat -> bool" (V.VType (TFun TNat TBool))
     tcTest "U -> U" TU
-    interpTest "U -> U" V.VU
+    interpTest "U -> U" (V.VType (TFun TU TU))
     tcTest "bool -> nat -> bool" TU
-    interpTest "bool -> nat -> bool" V.VU
+    interpTest "bool -> nat -> bool" (V.VType (TFun TBool (TFun TNat TBool)))
 
   describe "Phase 1: Dependent Function Types" $ do
     tcTest "(x : nat) -> bool" TU
-    interpTest "(x : nat) -> bool" V.VU
+    interpErrorTest "(x : nat) -> bool"
     tcTest "(x : U) -> nat" TU
-    interpTest "(x : U) -> nat" V.VU
-    -- Note: Complex dependent variable scoping is beyond basic Phase 1 implementation
-    -- tcTest "(a : U) -> (b : U) -> a -> b -> a" TU
-    -- interpTest "(a : U) -> (b : U) -> a -> b -> a" V.VU
+    interpErrorTest "(x : U) -> nat"
 
   describe "Phase 1: Type-Annotated Lambda Expressions" $ do
     -- Identity functions
@@ -78,6 +75,9 @@ test = hspec $ do
     interpSuccessTest "\\(x : nat) -> zero"
     interpSuccessTest "\\(x : U) -> nat"
 
+    -- Type-annotated lambda expressions
+    interpSuccessTest "\\(a : U) -> \\(x : bool) -> \\(y : bool) -> x"
+
   describe "Phase 1: Nested Type-Annotated Lambdas" $ do
     interpSuccessTest "\\(a : U) -> \\(x : nat) -> x"
     interpSuccessTest "\\(a : U) -> \\(b : U) -> a"
@@ -86,17 +86,20 @@ test = hspec $ do
   describe "Phase 1: Church Encoding Foundations" $ do
     -- Simplified Church Boolean type (without dependent variables for now)
     tcTest "U -> U -> U -> U" TU
-    interpTest "U -> U -> U -> U" V.VU
+    interpTest "U -> U -> U -> U" (V.VType (TFun TU (TFun TU (TFun TU TU))))
 
     -- Simplified Church Natural type
     tcTest "U -> (U -> U) -> U -> U" TU
-    interpTest "U -> (U -> U) -> U -> U" V.VU
+    interpTest "U -> (U -> U) -> U -> U" (V.VType (TFun TU (TFun (TFun TU TU) (TFun TU TU))))
 
     -- Church-style functions with type annotations
     interpSuccessTest "\\(a : U) -> \\(x : nat) -> \\(y : nat) -> x"
     interpSuccessTest "\\(a : U) -> \\(x : nat) -> \\(y : nat) -> y"
     interpSuccessTest "\\(a : U) -> \\(s : nat -> nat) -> \\(z : nat) -> z"
     interpSuccessTest "\\(a : U) -> \\(s : nat -> nat) -> \\(z : nat) -> s z"
+
+    -- Type-annotated lambda expressions
+    interpSuccessTest "\\(a : U) -> \\(s : bool -> bool) -> \\(z : bool) -> z"
 
   describe "Church Encoding: Boolean Types" $ do
     -- Note: Full dependent variable scoping (a : U) -> a -> a -> a is beyond basic Phase 1
@@ -124,14 +127,14 @@ test = hspec $ do
   describe "Church Encoding: Function Type Expressions" $ do
     -- More complex function type combinations
     tcTest "(nat -> nat) -> nat -> nat" TU
-    interpTest "(nat -> nat) -> nat -> nat" V.VU
+    interpTest "(nat -> nat) -> nat -> nat" (V.VType (TFun (TFun TNat TNat) (TFun TNat TNat)))
 
     tcTest "(bool -> bool) -> bool -> bool" TU
-    interpTest "(bool -> bool) -> bool -> bool" V.VU
+    interpTest "(bool -> bool) -> bool -> bool" (V.VType (TFun (TFun TBool TBool) (TFun TBool TBool)))
 
     -- Nested function types
     tcTest "((nat -> nat) -> nat) -> nat -> nat" TU
-    interpTest "((nat -> nat) -> nat) -> nat -> nat" V.VU
+    interpTest "((nat -> nat) -> nat) -> nat -> nat" (V.VType (TFun (TFun (TFun TNat TNat) TNat) (TFun TNat TNat)))
 
   describe "Church Encoding: Advanced Lambda Expressions" $ do
     -- Church successor pattern (simplified)
@@ -147,15 +150,15 @@ test = hspec $ do
   describe "Church Encoding: Complex Nested Types" $ do
     -- Church Boolean with generic types
     tcTest "(U -> U -> U) -> U" TU
-    interpTest "(U -> U -> U) -> U" V.VU
+    interpTest "(U -> U -> U) -> U" (V.VType (TFun (TFun TU (TFun TU TU)) TU))
 
     -- Church Natural with function composition
     tcTest "((U -> U) -> U -> U) -> U" TU
-    interpTest "((U -> U) -> U -> U) -> U" V.VU
+    interpTest "((U -> U) -> U -> U) -> U" (V.VType (TFun (TFun (TFun TU TU) (TFun TU TU)) TU))
 
     -- Triple-nested function types
     tcTest "(((U -> U) -> U) -> U) -> U" TU
-    interpTest "(((U -> U) -> U) -> U) -> U" V.VU
+    interpTest "(((U -> U) -> U) -> U) -> U" (V.VType (TFun (TFun (TFun (TFun TU TU) TU) TU) TU))
 
   describe "Phase 1: Backward Compatibility" $ do
     -- Ensure Phase 0 features still work

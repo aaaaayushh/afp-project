@@ -15,6 +15,10 @@ data DBExp
   | DBExprBool -- bool type as expression
   | DBExprFun DBExp DBExp -- function type as expression
   | DBExprDepFun DBExp DBExp -- dependent function type as expression
+  -- Phase 2: Top/Bot type expressions
+  | DBExprTop -- Top type as expression
+  | DBExprBot -- Bot type as expression
+  | DBExprPair DBExp DBExp -- pair type as expression [A, B]
   | DBZero
   | DBSuc DBExp
   | DBAdd DBExp DBExp
@@ -32,6 +36,15 @@ data DBExp
   | DBIf DBExp DBExp DBExp
   | DBLet DBExp DBExp -- let e1 in e2 (no variable name needed)
   | DBApp DBExp DBExp -- function application (both can be arbitrary expressions now)
+  -- Phase 2: Top/Bot values and eliminators
+  | DBTt -- unit value tt
+  | DBMagic -- magic function
+  -- Phase 2: Boolean eliminator
+  | DBElimBool DBExp DBExp DBExp DBExp -- elimBool P t f b
+  -- Phase 2: Pair types
+  | DBPair DBExp DBExp -- pair constructor (a, b)
+  | DBFst DBExp -- first projection
+  | DBSnd DBExp -- second projection
   deriving (Show, Eq)
 
 -- De Bruijn types (types can now contain variables)
@@ -42,6 +55,10 @@ data DBType
   | DBTFun DBType DBType
   | DBTDepFun DBType DBType -- (x : a) -> b in De Bruijn form
   | DBTVar Int -- Type variable (De Bruijn index)
+  -- Phase 2: Top/Bot and pair types
+  | DBTTop -- Top type
+  | DBTBot -- Bot type
+  | DBTPair DBType DBType -- Pair type [A, B]
   deriving (Show, Eq)
 
 data DBStmt
@@ -59,6 +76,10 @@ toDBType ctx TBool = DBTBool
 toDBType ctx TU = DBTU
 toDBType ctx (TFun a b) = DBTFun (toDBType ctx a) (toDBType ctx b)
 toDBType ctx (TDepFun x a b) = DBTDepFun (toDBType ctx a) (toDBType (x : ctx) b)
+-- Phase 2: Top/Bot and pair types
+toDBType ctx TTop = DBTTop
+toDBType ctx TBot = DBTBot
+toDBType ctx (TPair a b) = DBTPair (toDBType ctx a) (toDBType ctx b)
 
 -- Convert named expression to De Bruijn
 toDB :: Context -> Exp -> DBExp
@@ -73,6 +94,11 @@ toDB ctx ENat = DBExprNat
 toDB ctx EBool = DBExprBool
 toDB ctx (EFunType a b) = DBExprFun (toDB ctx a) (toDB ctx b)
 toDB ctx (EDepFunType x a b) = DBExprDepFun (toDB ctx a) (toDB (x : ctx) b)
+-- Phase 2: Top/Bot type expressions
+toDB ctx ETop = DBExprTop
+toDB ctx EBot = DBExprBot
+-- Phase 2: Pair type expressions
+toDB ctx (EPairType a b) = DBExprPair (toDB ctx a) (toDB ctx b)
 toDB ctx EZero = DBZero
 toDB ctx (ESuc e) = DBSuc (toDB ctx e)
 toDB ctx (EAdd e1 e2) = DBAdd (toDB ctx e1) (toDB ctx e2)
@@ -90,6 +116,15 @@ toDB ctx (EGeq e1 e2) = DBGeq (toDB ctx e1) (toDB ctx e2)
 toDB ctx (EIf c t e) = DBIf (toDB ctx c) (toDB ctx t) (toDB ctx e)
 toDB ctx (ELet x e body) = DBLet (toDB ctx e) (toDB (x : ctx) body)
 toDB ctx (EApp f e) = DBApp (toDB ctx f) (toDB ctx e)
+-- Phase 2: Top/Bot values and eliminators
+toDB ctx ETt = DBTt
+toDB ctx EMagic = DBMagic
+-- Phase 2: Boolean eliminator
+toDB ctx (EElimBool p t f b) = DBElimBool (toDB ctx p) (toDB ctx t) (toDB ctx f) (toDB ctx b)
+-- Phase 2: Pair types
+toDB ctx (EPair a b) = DBPair (toDB ctx a) (toDB ctx b)
+toDB ctx (EFst p) = DBFst (toDB ctx p)
+toDB ctx (ESnd p) = DBSnd (toDB ctx p)
 
 -- Convert statements to De Bruijn
 toDBStmt :: Context -> Stmt -> DBStmt
@@ -111,6 +146,10 @@ shift n k DBExprNat = DBExprNat
 shift n k DBExprBool = DBExprBool
 shift n k (DBExprFun a b) = DBExprFun (shift n k a) (shift n k b)
 shift n k (DBExprDepFun a b) = DBExprDepFun (shift n k a) (shift (n + 1) k b)
+-- Phase 2: Top/Bot type expressions
+shift n k DBExprTop = DBExprTop
+shift n k DBExprBot = DBExprBot
+shift n k (DBExprPair a b) = DBExprPair (shift n k a) (shift n k b)
 shift n k DBZero = DBZero
 shift n k (DBSuc e) = DBSuc (shift n k e)
 shift n k (DBAdd e1 e2) = DBAdd (shift n k e1) (shift n k e2)
@@ -128,6 +167,15 @@ shift n k (DBGeq e1 e2) = DBGeq (shift n k e1) (shift n k e2)
 shift n k (DBIf c t e) = DBIf (shift n k c) (shift n k t) (shift n k e)
 shift n k (DBLet e body) = DBLet (shift n k e) (shift (n + 1) k body)
 shift n k (DBApp f e) = DBApp (shift n k f) (shift n k e)
+-- Phase 2: Top/Bot values and eliminators
+shift n k DBTt = DBTt
+shift n k DBMagic = DBMagic
+-- Phase 2: Boolean eliminator
+shift n k (DBElimBool p t f b) = DBElimBool (shift n k p) (shift n k t) (shift n k f) (shift n k b)
+-- Phase 2: Pair types
+shift n k (DBPair a b) = DBPair (shift n k a) (shift n k b)
+shift n k (DBFst p) = DBFst (shift n k p)
+shift n k (DBSnd p) = DBSnd (shift n k p)
 
 -- Shift function for types
 shiftType :: Int -> Int -> DBType -> DBType
@@ -139,6 +187,10 @@ shiftType n k DBTBool = DBTBool
 shiftType n k DBTU = DBTU
 shiftType n k (DBTFun a b) = DBTFun (shiftType n k a) (shiftType n k b)
 shiftType n k (DBTDepFun a b) = DBTDepFun (shiftType n k a) (shiftType (n + 1) k b)
+-- Phase 2: Top/Bot and pair types
+shiftType n k DBTTop = DBTTop
+shiftType n k DBTBot = DBTBot
+shiftType n k (DBTPair a b) = DBTPair (shiftType n k a) (shiftType n k b)
 
 -- Substitution: subst n u e
 -- Replace variable n with u, decrement indices > n
@@ -156,6 +208,10 @@ subst n u DBExprNat = DBExprNat
 subst n u DBExprBool = DBExprBool
 subst n u (DBExprFun a b) = DBExprFun (subst n u a) (subst n u b)
 subst n u (DBExprDepFun a b) = DBExprDepFun (subst n u a) (subst (n + 1) (shift 0 1 u) b)
+-- Phase 2: Top/Bot type expressions
+subst n u DBExprTop = DBExprTop
+subst n u DBExprBot = DBExprBot
+subst n u (DBExprPair a b) = DBExprPair (subst n u a) (subst n u b)
 subst n u DBZero = DBZero
 subst n u (DBSuc e) = DBSuc (subst n u e)
 subst n u (DBAdd e1 e2) = DBAdd (subst n u e1) (subst n u e2)
@@ -173,3 +229,12 @@ subst n u (DBGeq e1 e2) = DBGeq (subst n u e1) (subst n u e2)
 subst n u (DBIf c t e) = DBIf (subst n u c) (subst n u t) (subst n u e)
 subst n u (DBLet e body) = DBLet (subst n u e) (subst (n + 1) (shift 0 1 u) body)
 subst n u (DBApp f e) = DBApp (subst n u f) (subst n u e)
+-- Phase 2: Top/Bot values and eliminators
+subst n u DBTt = DBTt
+subst n u DBMagic = DBMagic
+-- Phase 2: Boolean eliminator
+subst n u (DBElimBool p t f b) = DBElimBool (subst n u p) (subst n u t) (subst n u f) (subst n u b)
+-- Phase 2: Pair types
+subst n u (DBPair a b) = DBPair (subst n u a) (subst n u b)
+subst n u (DBFst p) = DBFst (subst n u p)
+subst n u (DBSnd p) = DBSnd (subst n u p)

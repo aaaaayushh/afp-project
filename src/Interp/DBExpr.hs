@@ -3,6 +3,7 @@ module Interp.DBExpr where
 import DBEnv
 import DeBruijn
 import Evaluator
+import Lang.Abs (Ident (..), Type (..))
 import Value (Closure (..), Nat (..), Value (..))
 import Value qualified
 
@@ -71,10 +72,28 @@ interp (DBFunRef f) (_, funs) =
 -- Universe type
 interp DBU _ = return VU
 -- Type expressions evaluate to universe (for Church encoding)
-interp DBExprNat _ = return VU
-interp DBExprBool _ = return VU
-interp (DBExprFun a b) env = return VU -- Function types evaluate to universe
-interp (DBExprDepFun a b) env = return VU -- Dependent function types evaluate to universe
+interp DBExprNat _ = return (VType TNat)
+interp DBExprBool _ = return (VType TBool)
+interp (DBExprFun a b) env = do
+  va <- interp a env
+  vb <- interp b env
+  case (va, vb) of
+    (VType ta, VType tb) -> return (VType (TFun ta tb))
+    (VType ta, VU) -> return (VType (TFun ta TU))
+    (VU, VType tb) -> return (VType (TFun TU tb))
+    (VU, VU) -> return (VType (TFun TU TU))
+    _ -> throw "Arguments to function type constructor '->' must be types"
+interp (DBExprDepFun a b) env = throw "Dependent function types cannot be fully evaluated at runtime in this version"
+-- Phase 2: Top/Bot type expressions
+interp DBExprTop _ = return (VType TTop)
+interp DBExprBot _ = return (VType TBot)
+-- Phase 2: Pair type expressions
+interp (DBExprPair a b) env = do
+  va <- interp a env
+  vb <- interp b env
+  case (va, vb) of
+    (VType ta, VType tb) -> return (VType (TPair ta tb))
+    _ -> throw "Arguments to pair type constructor '[,]' must be types"
 -- Natural numbers
 interp DBZero _ = return $ VNat Zero
 interp (DBSuc e) env = do
@@ -103,6 +122,7 @@ interp (DBEq e1 e2) env = do
   case (v1, v2) of
     (VBool b1, VBool b2) -> return $ VBool (b1 == b2)
     (VNat n1, VNat n2) -> return $ VBool (eqNat n1 n2)
+    (VType t1, VType t2) -> return $ VBool (t1 == t2)
     _ -> throw "Cannot compare different types"
 interp (DBLt e1 e2) env = do
   v1 <- interp e1 env
@@ -161,3 +181,31 @@ interp (DBApp f e) env@(vals, funs) = do
           interp body (extendDB arg vals, funs)
         Nothing -> throw $ "Named function " ++ show fname ++ " not found"
     _ -> throw "Cannot apply non-function"
+
+-- Phase 2: Top/Bot values
+interp DBTt _ = return VTop
+interp DBMagic _ = return $ VLam (DBFun (DBVar 0)) -- magic as identity (impossible to call properly)
+
+-- Phase 2: Boolean eliminator
+interp (DBElimBool p t f b) env = do
+  bval <- interp b env
+  case bval of
+    VBool True -> interp t env
+    VBool False -> interp f env
+    _ -> throw "elimBool requires boolean argument"
+
+-- Phase 2: Pair types
+interp (DBPair a b) env = do
+  va <- interp a env
+  vb <- interp b env
+  return $ VPair va vb
+interp (DBFst p) env = do
+  vp <- interp p env
+  case vp of
+    VPair va _ -> return va
+    _ -> throw "fst requires pair argument"
+interp (DBSnd p) env = do
+  vp <- interp p env
+  case vp of
+    VPair _ vb -> return vb
+    _ -> throw "snd requires pair argument"
