@@ -73,6 +73,9 @@ interp DBU _ = return VU
 -- Type expressions evaluate to universe (for Church encoding)
 interp DBExprNat _ = return VU
 interp DBExprBool _ = return VU
+interp DBExprTop _ = return VTop
+interp DBExprBot _ = return VBot
+interp (DBExprPair a b) env = return VU -- Pair types evaluate to universe
 interp (DBExprFun a b) env = return VU -- Function types evaluate to universe
 interp (DBExprDepFun a b) env = return VU -- Dependent function types evaluate to universe
 -- Natural numbers
@@ -161,3 +164,36 @@ interp (DBApp f e) env@(vals, funs) = do
           interp body (extendDB arg vals, funs)
         Nothing -> throw $ "Named function " ++ show fname ++ " not found"
     _ -> throw "Cannot apply non-function"
+
+-- Phase 2: Built-in types and operations
+-- Unit element
+interp DBTt _ = return VTt
+-- Pair constructor
+interp (DBPair e1 e2) env = do
+  v1 <- interp e1 env
+  v2 <- interp e2 env
+  return $ VPair v1 v2
+-- First projection
+interp (DBFst e) env = do
+  v <- interp e env
+  case v of
+    VPair v1 _ -> return v1
+    _ -> throw "fst can only be applied to pairs"
+-- Second projection
+interp (DBSnd e) env = do
+  v <- interp e env
+  case v of
+    VPair _ v2 -> return v2
+    _ -> throw "snd can only be applied to pairs"
+-- Magic function (should never be reached at runtime since Bot has no inhabitants)
+interp (DBMagic e) env = do
+  v <- interp e env
+  -- Since Bot has no inhabitants, this should never actually execute
+  throw "magic function applied to a value (Bot should have no inhabitants)"
+-- Boolean eliminator
+interp (DBElimBool p t f b) env = do
+  bval <- interp b env
+  case bval of
+    VBool True -> interp t env
+    VBool False -> interp f env
+    _ -> throw "elimBool can only be applied to booleans"

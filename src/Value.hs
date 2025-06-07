@@ -12,6 +12,10 @@ data Value
   | VBool Bool
   | VLam Closure -- Add lambda values
   | VU -- Universe value
+  | VTop -- Top type value
+  | VTt -- unit element
+  | VBot -- Bot type value
+  | VPair Value Value -- pair value
   deriving (Show, Eq)
 
 data Nat

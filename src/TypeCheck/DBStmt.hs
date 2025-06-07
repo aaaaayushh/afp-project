@@ -12,6 +12,9 @@ dbTypeToType :: DBType -> Type
 dbTypeToType DBTNat = TNat
 dbTypeToType DBTBool = TBool
 dbTypeToType DBTU = TU
+dbTypeToType DBTTop = TTop
+dbTypeToType DBTBot = TBot
+dbTypeToType (DBTPair a b) = TPair (dbTypeToType a) (dbTypeToType b)
 dbTypeToType (DBTFun a b) = TFun (dbTypeToType a) (dbTypeToType b)
 dbTypeToType (DBTDepFun a b) = TDepFun (Ident "x") (dbTypeToType a) (dbTypeToType b) -- Use dummy variable name
 dbTypeToType (DBTVar _) = error "Cannot convert type variable to concrete type"

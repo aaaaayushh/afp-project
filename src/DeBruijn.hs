@@ -13,6 +13,9 @@ data DBExp
   -- Type expressions at value level (for dependent types)
   | DBExprNat -- nat type as expression
   | DBExprBool -- bool type as expression
+  | DBExprTop -- Top type as expression
+  | DBExprBot -- Bot type as expression
+  | DBExprPair DBExp DBExp -- pair type as expression [A, B]
   | DBExprFun DBExp DBExp -- function type as expression
   | DBExprDepFun DBExp DBExp -- dependent function type as expression
   | DBZero
@@ -32,6 +35,13 @@ data DBExp
   | DBIf DBExp DBExp DBExp
   | DBLet DBExp DBExp -- let e1 in e2 (no variable name needed)
   | DBApp DBExp DBExp -- function application (both can be arbitrary expressions now)
+  -- Phase 2: Built-in types and operations
+  | DBTt -- unit element
+  | DBPair DBExp DBExp -- pair constructor
+  | DBFst DBExp -- first projection
+  | DBSnd DBExp -- second projection
+  | DBMagic DBExp -- magic function
+  | DBElimBool DBExp DBExp DBExp DBExp -- elimBool P t f b
   deriving (Show, Eq)
 
 -- De Bruijn types (types can now contain variables)
@@ -39,6 +49,9 @@ data DBType
   = DBTNat
   | DBTBool
   | DBTU
+  | DBTTop -- Top type
+  | DBTBot -- Bot type
+  | DBTPair DBType DBType -- pair type
   | DBTFun DBType DBType
   | DBTDepFun DBType DBType -- (x : a) -> b in De Bruijn form
   | DBTVar Int -- Type variable (De Bruijn index)
@@ -57,6 +70,9 @@ toDBType :: Context -> Type -> DBType
 toDBType ctx TNat = DBTNat
 toDBType ctx TBool = DBTBool
 toDBType ctx TU = DBTU
+toDBType ctx TTop = DBTTop
+toDBType ctx TBot = DBTBot
+toDBType ctx (TPair a b) = DBTPair (toDBType ctx a) (toDBType ctx b)
 toDBType ctx (TFun a b) = DBTFun (toDBType ctx a) (toDBType ctx b)
 toDBType ctx (TDepFun x a b) = DBTDepFun (toDBType ctx a) (toDBType (x : ctx) b)
 
@@ -71,6 +87,9 @@ toDB ctx (ELamAnn x t e) = DBLamAnn (toDBType ctx t) (toDB (x : ctx) e)
 toDB ctx EU = DBU
 toDB ctx ENat = DBExprNat
 toDB ctx EBool = DBExprBool
+toDB ctx ETop = DBExprTop
+toDB ctx EBot = DBExprBot
+toDB ctx (EPairType a b) = DBExprPair (toDB ctx a) (toDB ctx b) -- Pair type expression [A, B]
 toDB ctx (EFunType a b) = DBExprFun (toDB ctx a) (toDB ctx b)
 toDB ctx (EDepFunType x a b) = DBExprDepFun (toDB ctx a) (toDB (x : ctx) b)
 toDB ctx EZero = DBZero
@@ -90,6 +109,13 @@ toDB ctx (EGeq e1 e2) = DBGeq (toDB ctx e1) (toDB ctx e2)
 toDB ctx (EIf c t e) = DBIf (toDB ctx c) (toDB ctx t) (toDB ctx e)
 toDB ctx (ELet x e body) = DBLet (toDB ctx e) (toDB (x : ctx) body)
 toDB ctx (EApp f e) = DBApp (toDB ctx f) (toDB ctx e)
+-- Phase 2: Built-in types and operations
+toDB ctx ETt = DBTt
+toDB ctx (EPair e1 e2) = DBPair (toDB ctx e1) (toDB ctx e2)
+toDB ctx (EFst e) = DBFst (toDB ctx e)
+toDB ctx (ESnd e) = DBSnd (toDB ctx e)
+toDB ctx (EMagic e) = DBMagic (toDB ctx e)
+toDB ctx (EElimBool p t f b) = DBElimBool (toDB ctx p) (toDB ctx t) (toDB ctx f) (toDB ctx b)
 
 -- Convert statements to De Bruijn
 toDBStmt :: Context -> Stmt -> DBStmt
@@ -109,6 +135,9 @@ shift n k DBU = DBU
 -- Type expressions
 shift n k DBExprNat = DBExprNat
 shift n k DBExprBool = DBExprBool
+shift n k DBExprTop = DBExprTop
+shift n k DBExprBot = DBExprBot
+shift n k (DBExprPair a b) = DBExprPair (shift n k a) (shift n k b)
 shift n k (DBExprFun a b) = DBExprFun (shift n k a) (shift n k b)
 shift n k (DBExprDepFun a b) = DBExprDepFun (shift n k a) (shift (n + 1) k b)
 shift n k DBZero = DBZero
@@ -128,6 +157,13 @@ shift n k (DBGeq e1 e2) = DBGeq (shift n k e1) (shift n k e2)
 shift n k (DBIf c t e) = DBIf (shift n k c) (shift n k t) (shift n k e)
 shift n k (DBLet e body) = DBLet (shift n k e) (shift (n + 1) k body)
 shift n k (DBApp f e) = DBApp (shift n k f) (shift n k e)
+-- Phase 2: Built-in types and operations
+shift n k DBTt = DBTt
+shift n k (DBPair e1 e2) = DBPair (shift n k e1) (shift n k e2)
+shift n k (DBFst e) = DBFst (shift n k e)
+shift n k (DBSnd e) = DBSnd (shift n k e)
+shift n k (DBMagic e) = DBMagic (shift n k e)
+shift n k (DBElimBool p t f b) = DBElimBool (shift n k p) (shift n k t) (shift n k f) (shift n k b)
 
 -- Shift function for types
 shiftType :: Int -> Int -> DBType -> DBType
@@ -137,6 +173,9 @@ shiftType n k (DBTVar i)
 shiftType n k DBTNat = DBTNat
 shiftType n k DBTBool = DBTBool
 shiftType n k DBTU = DBTU
+shiftType n k DBTTop = DBTTop
+shiftType n k DBTBot = DBTBot
+shiftType n k (DBTPair a b) = DBTPair (shiftType n k a) (shiftType n k b)
 shiftType n k (DBTFun a b) = DBTFun (shiftType n k a) (shiftType n k b)
 shiftType n k (DBTDepFun a b) = DBTDepFun (shiftType n k a) (shiftType (n + 1) k b)
 
@@ -154,6 +193,9 @@ subst n u DBU = DBU
 -- Type expressions
 subst n u DBExprNat = DBExprNat
 subst n u DBExprBool = DBExprBool
+subst n u DBExprTop = DBExprTop
+subst n u DBExprBot = DBExprBot
+subst n u (DBExprPair a b) = DBExprPair (subst n u a) (subst n u b)
 subst n u (DBExprFun a b) = DBExprFun (subst n u a) (subst n u b)
 subst n u (DBExprDepFun a b) = DBExprDepFun (subst n u a) (subst (n + 1) (shift 0 1 u) b)
 subst n u DBZero = DBZero
@@ -173,3 +215,10 @@ subst n u (DBGeq e1 e2) = DBGeq (subst n u e1) (subst n u e2)
 subst n u (DBIf c t e) = DBIf (subst n u c) (subst n u t) (subst n u e)
 subst n u (DBLet e body) = DBLet (subst n u e) (subst (n + 1) (shift 0 1 u) body)
 subst n u (DBApp f e) = DBApp (subst n u f) (subst n u e)
+-- Phase 2: Built-in types and operations
+subst n u DBTt = DBTt
+subst n u (DBPair e1 e2) = DBPair (subst n u e1) (subst n u e2)
+subst n u (DBFst e) = DBFst (subst n u e)
+subst n u (DBSnd e) = DBSnd (subst n u e)
+subst n u (DBMagic e) = DBMagic (subst n u e)
+subst n u (DBElimBool p t f b) = DBElimBool (subst n u p) (subst n u t) (subst n u f) (subst n u b)

@@ -14,6 +14,9 @@ dbTypeToType :: DBType -> Type
 dbTypeToType DBTNat = TNat
 dbTypeToType DBTBool = TBool
 dbTypeToType DBTU = TU
+dbTypeToType DBTTop = TTop
+dbTypeToType DBTBot = TBot
+dbTypeToType (DBTPair a b) = TPair (dbTypeToType a) (dbTypeToType b)
 dbTypeToType (DBTFun a b) = TFun (dbTypeToType a) (dbTypeToType b)
 dbTypeToType (DBTDepFun a b) = TDepFun (Ident "x") (dbTypeToType a) (dbTypeToType b) -- Use dummy variable name
 dbTypeToType (DBTVar _) = error "Cannot convert type variable to concrete type"
@@ -44,6 +47,12 @@ infer DBU _ = return TU
 -- Type expressions in the expression language
 infer DBExprNat _ = return TU
 infer DBExprBool _ = return TU
+infer DBExprTop _ = return TU
+infer DBExprBot _ = return TU
+infer (DBExprPair a b) env = do
+  check a TU env
+  check b TU env
+  return TU
 infer (DBExprFun a b) env = do
   check a TU env
   check b TU env
@@ -131,11 +140,55 @@ infer (DBApp f e) env = do
       return tret -- For now, don't do dependent substitution
     _ -> throw "Cannot apply non-function"
 
+-- Phase 2: Built-in types and operations
+-- Unit element
+infer DBTt _ = return TTop
+-- Pair constructor
+infer (DBPair e1 e2) env = do
+  t1 <- infer e1 env
+  t2 <- infer e2 env
+  return $ TPair t1 t2
+-- First projection
+infer (DBFst e) env = do
+  t <- infer e env
+  case t of
+    TPair t1 _ -> return t1
+    _ -> throw "fst can only be applied to pairs"
+-- Second projection
+infer (DBSnd e) env = do
+  t <- infer e env
+  case t of
+    TPair _ t2 -> return t2
+    _ -> throw "snd can only be applied to pairs"
+-- Magic function has type (A : U) -> Bot -> A, but we simplify to Bot -> a for any a
+infer (DBMagic e) env = do
+  check e TBot env
+  -- Magic can return any type, but since we can't know what type is expected,
+  -- we'll need to handle this in the check function instead
+  throw "Cannot infer type of magic function - must be checked against expected type"
+-- Boolean eliminator: elimBool : (P : bool -> U) -> P true -> P false -> (b : bool) -> P b
+-- For simplicity, we'll type it as: (bool -> U) -> A -> A -> bool -> A
+infer (DBElimBool p t f b) env = do
+  -- Check that p has type bool -> U
+  check p (TFun TBool TU) env
+  -- Check that b has type bool
+  check b TBool env
+  -- Infer the type of the true branch
+  tType <- infer t env
+  -- Check that the false branch has the same type
+  check f tType env
+  return tType
+
 -- Bidirectional type checking
 check :: DBExp -> Type -> TyEnv -> Result ()
 -- Universe type checking - types have type U
 check DBExprNat TU _ = return ()
 check DBExprBool TU _ = return ()
+check DBExprTop TU _ = return ()
+check DBExprBot TU _ = return ()
+check (DBExprPair a b) TU env = do
+  check a TU env
+  check b TU env
 check DBU TU _ = return ()
 check (DBExprFun a b) TU env = do
   check a TU env
@@ -161,6 +214,12 @@ check (DBLamAnn domType body) (TDepFun _ targ tret) env@(types, funs) = do
   if domTypeConc == targ
     then check body tret (extendDB domTypeConc types, funs)
     else throw "Lambda domain type mismatch"
+
+-- Phase 2: Magic function can be checked against any type as long as it's applied to Bot
+check (DBMagic e) expectedType env = do
+  check e TBot env
+  return () -- Magic can have any type
+
 -- For other expressions, infer and compare
 check e expected env = do
   actual <- infer e env
@@ -173,6 +232,9 @@ typeToDBExp :: Type -> DBExp
 typeToDBExp TNat = DBExprNat
 typeToDBExp TBool = DBExprBool
 typeToDBExp TU = DBU
+typeToDBExp TTop = DBExprTop
+typeToDBExp TBot = DBExprBot
+typeToDBExp (TPair a b) = DBExprPair (typeToDBExp a) (typeToDBExp b)
 typeToDBExp (TFun a b) = DBExprFun (typeToDBExp a) (typeToDBExp b)
 typeToDBExp (TDepFun _ a b) = DBExprDepFun (typeToDBExp a) (typeToDBExp b)
 
@@ -181,5 +243,8 @@ typeToDBType :: Type -> DBType
 typeToDBType TNat = DBTNat
 typeToDBType TBool = DBTBool
 typeToDBType TU = DBTU
+typeToDBType TTop = DBTTop
+typeToDBType TBot = DBTBot
+typeToDBType (TPair a b) = DBTPair (typeToDBType a) (typeToDBType b)
 typeToDBType (TFun a b) = DBTFun (typeToDBType a) (typeToDBType b)
 typeToDBType (TDepFun _ a b) = DBTDepFun (typeToDBType a) (typeToDBType b)
