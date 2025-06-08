@@ -4,7 +4,7 @@ import DBEnv
 import DeBruijn
 import Evaluator
 import Interp.DBExpr (interp)
-import Lang.Abs (Ident (..), Type (..))
+import Lang.Abs (Exp (..), Ident (..), Type (..))
 import Value qualified as V
 
 -- Type checking environment
@@ -28,6 +28,8 @@ dbTypeToType (DBTVar _) = error "Cannot convert type variable to concrete type"
 dbTypeToType DBTTop = TTop
 dbTypeToType DBTBot = TBot
 dbTypeToType (DBTPair a b) = TPair (dbTypeToType a) (dbTypeToType b)
+-- Phase 3: Identity type
+dbTypeToType (DBTId a x y) = TId (dbExpToExp a) (dbExpToExp x) (dbExpToExp y)
 
 -- Bidirectional type inference
 infer :: DBExp -> TyEnv -> Result Type
@@ -71,6 +73,16 @@ infer (DBExprPair a b) env = do
   check a TU env
   check b TU env
   return TU
+-- Phase 3: Identity type
+infer (DBExprId a x y) env = do
+  check a TU env
+  a_type_val <- interp a (emptyDB, emptyFun)
+  a_type <- valueToType a_type_val
+  check x a_type env
+  check y a_type env
+  return TU
+infer DBRefl env = throw "Cannot infer type of refl, must be checked"
+infer DBJ env = throw "Cannot infer type of J, must be checked"
 -- Natural numbers
 infer DBZero _ = return TNat
 infer (DBSuc e) env = do
@@ -215,6 +227,27 @@ check DBExprBot TU _ = return ()
 check (DBExprPair a b) TU env = do
   check a TU env
   check b TU env
+-- Phase 3: Identity type
+check (DBExprId a x y) TU env = do
+  check a TU env
+  a_type_val <- interp a (emptyDB, emptyFun)
+  a_type <- valueToType a_type_val
+  check x a_type env
+  check y a_type env
+check DBRefl (TId a x y) env = do
+  x_val <- interp (typeToDBExp (TId a x y)) (emptyDB, emptyFun)
+  y_val <- interp (typeToDBExp (TId a x y)) (emptyDB, emptyFun)
+  if x_val == y_val
+    then return ()
+    else throw $ "Refl requires definitionally equal terms, but got " ++ show x ++ " and " ++ show y
+check DBJ full_type env@(types, funs) = do
+  case full_type of
+    -- J : (a:U) -> (x:a) -> (p:(y:a) -> (eq:Id a x y) -> U) -> (p0:p x (refl a x)) -> (y:a) -> (eq:Id a x y) -> p y eq
+    (TDepFun _ a_type (TDepFun _ x_type (TDepFun _ p_type (TDepFun _ p0_type (TDepFun _ y_type (TDepFun _ eq_type ret_type)))))) -> do
+      -- This is a simplified check. A full check would be much more involved.
+      -- For now, we just ensure the structure is a nested dependent function type.
+      return ()
+    _ -> throw "J must have a dependent function type."
 
 -- Lambda expressions are best checked against function types
 check (DBLam body) (TFun targ tret) env@(types, funs) = do
@@ -247,19 +280,49 @@ typeToDBExp TBool = DBExprBool
 typeToDBExp TU = DBU
 typeToDBExp (TFun a b) = DBExprFun (typeToDBExp a) (typeToDBExp b)
 typeToDBExp (TDepFun _ a b) = DBExprDepFun (typeToDBExp a) (typeToDBExp b)
+typeToDBExp (TId a x y) = DBExprId (toDB [] a) (toDB [] x) (toDB [] y)
 -- Phase 2: Top/Bot and pair types
 typeToDBExp TTop = DBExprTop
 typeToDBExp TBot = DBExprBot
 typeToDBExp (TPair a b) = DBExprPair (typeToDBExp a) (typeToDBExp b)
 
--- Helper function to convert Type to DBType
-typeToDBType :: Type -> DBType
-typeToDBType TNat = DBTNat
-typeToDBType TBool = DBTBool
-typeToDBType TU = DBTU
-typeToDBType (TFun a b) = DBTFun (typeToDBType a) (typeToDBType b)
-typeToDBType (TDepFun _ a b) = DBTDepFun (typeToDBType a) (typeToDBType b)
--- Phase 2: Top/Bot and pair types
-typeToDBType TTop = DBTTop
-typeToDBType TBot = DBTBot
-typeToDBType (TPair a b) = DBTPair (typeToDBType a) (typeToDBType b)
+-- Helper to convert DBExp to Exp
+dbExpToExp :: DBExp -> Exp
+dbExpToExp (DBVar i) = EVar (Ident ("x" ++ show i)) -- Not robust
+dbExpToExp (DBFunRef f) = EVar f
+dbExpToExp (DBLam e) = ELam (Ident "x") (dbExpToExp e)
+dbExpToExp (DBLamAnn t e) = ELamAnn (Ident "x") (dbTypeToType t) (dbExpToExp e)
+dbExpToExp DBU = EU
+dbExpToExp DBExprNat = ENat
+dbExpToExp DBExprBool = EBool
+dbExpToExp (DBExprFun a b) = EFunType (dbExpToExp a) (dbExpToExp b)
+dbExpToExp (DBExprDepFun a b) = EDepFunType (Ident "x") (dbExpToExp a) (dbExpToExp b)
+dbExpToExp DBExprTop = ETop
+dbExpToExp DBExprBot = EBot
+dbExpToExp (DBExprPair a b) = EPairType (dbExpToExp a) (dbExpToExp b)
+dbExpToExp (DBExprId a x y) = EId (dbExpToExp a) (dbExpToExp x) (dbExpToExp y)
+dbExpToExp DBRefl = ERefl
+dbExpToExp DBJ = EJ
+dbExpToExp DBZero = EZero
+dbExpToExp (DBSuc e) = ESuc (dbExpToExp e)
+dbExpToExp (DBAdd e1 e2) = EAdd (dbExpToExp e1) (dbExpToExp e2)
+dbExpToExp (DBMul e1 e2) = EMul (dbExpToExp e1) (dbExpToExp e2)
+dbExpToExp DBTrue = ETrue
+dbExpToExp DBFalse = EFalse
+dbExpToExp (DBNot e) = ENot (dbExpToExp e)
+dbExpToExp (DBAnd e1 e2) = EAnd (dbExpToExp e1) (dbExpToExp e2)
+dbExpToExp (DBOr e1 e2) = EOr (dbExpToExp e1) (dbExpToExp e2)
+dbExpToExp (DBEq e1 e2) = EEq (dbExpToExp e1) (dbExpToExp e2)
+dbExpToExp (DBLt e1 e2) = ELt (dbExpToExp e1) (dbExpToExp e2)
+dbExpToExp (DBGt e1 e2) = EGt (dbExpToExp e1) (dbExpToExp e2)
+dbExpToExp (DBLeq e1 e2) = ELeq (dbExpToExp e1) (dbExpToExp e2)
+dbExpToExp (DBGeq e1 e2) = EGeq (dbExpToExp e1) (dbExpToExp e2)
+dbExpToExp (DBIf c t e) = EIf (dbExpToExp c) (dbExpToExp t) (dbExpToExp e)
+dbExpToExp (DBLet e body) = ELet (Ident "x") (dbExpToExp e) (dbExpToExp body)
+dbExpToExp (DBApp f e) = EApp (dbExpToExp f) (dbExpToExp e)
+dbExpToExp DBTt = ETt
+dbExpToExp DBMagic = EMagic
+dbExpToExp (DBElimBool p t f b) = EElimBool (dbExpToExp p) (dbExpToExp t) (dbExpToExp f) (dbExpToExp b)
+dbExpToExp (DBPair a b) = EPair (dbExpToExp a) (dbExpToExp b)
+dbExpToExp (DBFst p) = EFst (dbExpToExp p)
+dbExpToExp (DBSnd p) = ESnd (dbExpToExp p)

@@ -84,6 +84,14 @@ interp (DBExprFun a b) env = do
     (VU, VU) -> return (VType (TFun TU TU))
     _ -> throw "Arguments to function type constructor '->' must be types"
 interp (DBExprDepFun a b) env = throw "Dependent function types cannot be fully evaluated at runtime in this version"
+-- Phase 3: Identity type
+interp (DBExprId a x y) env = do
+  a_val <- interp a env
+  x_val <- interp x env
+  y_val <- interp y env
+  return $ VId a_val x_val y_val
+interp DBRefl _ = return VRefl
+interp DBJ _ = return $ VJ []
 -- Phase 2: Top/Bot type expressions
 interp DBExprTop _ = return (VType TTop)
 interp DBExprBot _ = return (VType TBot)
@@ -180,6 +188,8 @@ interp (DBApp f e) env@(vals, funs) = do
         Just (DBFun body) ->
           interp body (extendDB arg vals, funs)
         Nothing -> throw $ "Named function " ++ show fname ++ " not found"
+    -- J evaluation
+    VJ args -> applyJ args arg env
     _ -> throw "Cannot apply non-function"
 
 -- Phase 2: Top/Bot values
@@ -209,3 +219,13 @@ interp (DBSnd p) env = do
   case vp of
     VPair _ vb -> return vb
     _ -> throw "snd requires pair argument"
+
+-- Helper for J application
+applyJ :: [Value] -> Value -> (DBEnv Value, FunEnv Closure) -> Result Value
+applyJ args new_arg env =
+  let new_args = args ++ [new_arg]
+   in if length new_args == 6
+        then case last new_args of
+          VRefl -> return $ new_args !! 4 -- p0 is the 5th argument (index 4)
+          _ -> return $ VJ new_args -- Not refl, return neutral term
+        else return $ VJ new_args

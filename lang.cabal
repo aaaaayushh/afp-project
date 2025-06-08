@@ -73,8 +73,10 @@ test-suite test
                     , BogusTests
                     , DeBruijnTests
                     , Phase1Tests
+                    , Phase3Tests
 
     build-depends:    grammar
                     , lang
                     , hspec
                     , QuickCheck
+                    , HUnit

@@ -16,6 +16,10 @@ data Value
   -- Phase 2: Top and Pair values
   | VTop -- unit value
   | VPair Value Value -- pair value
+  -- Phase 3: Identity Type
+  | VId Value Value Value -- identity type
+  | VRefl -- reflexivity proof
+  | VJ [Value] -- partial application of J
   deriving (Show, Eq)
 
 data Nat

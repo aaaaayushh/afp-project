@@ -19,6 +19,10 @@ data DBExp
   | DBExprTop -- Top type as expression
   | DBExprBot -- Bot type as expression
   | DBExprPair DBExp DBExp -- pair type as expression [A, B]
+  -- Phase 3: Identity type
+  | DBExprId DBExp DBExp DBExp -- Id type as expression
+  | DBRefl
+  | DBJ
   | DBZero
   | DBSuc DBExp
   | DBAdd DBExp DBExp
@@ -59,6 +63,8 @@ data DBType
   | DBTTop -- Top type
   | DBTBot -- Bot type
   | DBTPair DBType DBType -- Pair type [A, B]
+  -- Phase 3: Identity type
+  | DBTId DBExp DBExp DBExp
   deriving (Show, Eq)
 
 data DBStmt
@@ -76,6 +82,7 @@ toDBType ctx TBool = DBTBool
 toDBType ctx TU = DBTU
 toDBType ctx (TFun a b) = DBTFun (toDBType ctx a) (toDBType ctx b)
 toDBType ctx (TDepFun x a b) = DBTDepFun (toDBType ctx a) (toDBType (x : ctx) b)
+toDBType ctx (TId a x y) = DBTId (toDB ctx a) (toDB ctx x) (toDB ctx y)
 -- Phase 2: Top/Bot and pair types
 toDBType ctx TTop = DBTTop
 toDBType ctx TBot = DBTBot
@@ -99,6 +106,10 @@ toDB ctx ETop = DBExprTop
 toDB ctx EBot = DBExprBot
 -- Phase 2: Pair type expressions
 toDB ctx (EPairType a b) = DBExprPair (toDB ctx a) (toDB ctx b)
+-- Phase 3: Identity type
+toDB ctx (EId a x y) = DBExprId (toDB ctx a) (toDB ctx x) (toDB ctx y)
+toDB ctx ERefl = DBRefl
+toDB ctx EJ = DBJ
 toDB ctx EZero = DBZero
 toDB ctx (ESuc e) = DBSuc (toDB ctx e)
 toDB ctx (EAdd e1 e2) = DBAdd (toDB ctx e1) (toDB ctx e2)
@@ -150,6 +161,10 @@ shift n k (DBExprDepFun a b) = DBExprDepFun (shift n k a) (shift (n + 1) k b)
 shift n k DBExprTop = DBExprTop
 shift n k DBExprBot = DBExprBot
 shift n k (DBExprPair a b) = DBExprPair (shift n k a) (shift n k b)
+-- Phase 3: Identity type
+shift n k (DBExprId a x y) = DBExprId (shift n k a) (shift n k x) (shift n k y)
+shift n k DBRefl = DBRefl
+shift n k DBJ = DBJ
 shift n k DBZero = DBZero
 shift n k (DBSuc e) = DBSuc (shift n k e)
 shift n k (DBAdd e1 e2) = DBAdd (shift n k e1) (shift n k e2)
@@ -191,6 +206,8 @@ shiftType n k (DBTDepFun a b) = DBTDepFun (shiftType n k a) (shiftType (n + 1) k
 shiftType n k DBTTop = DBTTop
 shiftType n k DBTBot = DBTBot
 shiftType n k (DBTPair a b) = DBTPair (shiftType n k a) (shiftType n k b)
+-- Phase 3: Identity type
+shiftType n k (DBTId a x y) = DBTId (shift n k a) (shift n k x) (shift n k y)
 
 -- Substitution: subst n u e
 -- Replace variable n with u, decrement indices > n
@@ -212,6 +229,10 @@ subst n u (DBExprDepFun a b) = DBExprDepFun (subst n u a) (subst (n + 1) (shift 
 subst n u DBExprTop = DBExprTop
 subst n u DBExprBot = DBExprBot
 subst n u (DBExprPair a b) = DBExprPair (subst n u a) (subst n u b)
+-- Phase 3: Identity type
+subst n u (DBExprId a x y) = DBExprId (subst n u a) (subst n u x) (subst n u y)
+subst n u DBRefl = DBRefl
+subst n u DBJ = DBJ
 subst n u DBZero = DBZero
 subst n u (DBSuc e) = DBSuc (subst n u e)
 subst n u (DBAdd e1 e2) = DBAdd (subst n u e1) (subst n u e2)
