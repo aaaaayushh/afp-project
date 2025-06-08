@@ -45,6 +45,13 @@ data DBExp
   | DBPair DBExp DBExp -- pair constructor (a, b)
   | DBFst DBExp -- first projection
   | DBSnd DBExp -- second projection
+  -- Phase 3: Vector types
+  | DBExprVec DBExp DBExp -- Vector type as expression (Vector A n)
+  | DBNil -- empty vector []
+  | DBCons DBExp DBExp -- cons operation (a :: as)
+  | DBHead DBExp -- head function
+  | DBTail DBExp -- tail function
+  | DBAppend DBExp DBExp -- append function
   deriving (Show, Eq)
 
 -- De Bruijn types (types can now contain variables)
@@ -59,6 +66,8 @@ data DBType
   | DBTTop -- Top type
   | DBTBot -- Bot type
   | DBTPair DBType DBType -- Pair type [A, B]
+  -- Phase 3: Vector types
+  | DBTVec DBType DBExp -- Vector type [Vector A n]
   deriving (Show, Eq)
 
 data DBStmt
@@ -80,6 +89,8 @@ toDBType ctx (TDepFun x a b) = DBTDepFun (toDBType ctx a) (toDBType (x : ctx) b)
 toDBType ctx TTop = DBTTop
 toDBType ctx TBot = DBTBot
 toDBType ctx (TPair a b) = DBTPair (toDBType ctx a) (toDBType ctx b)
+-- Phase 3: Vector types
+toDBType ctx (TVec a n) = DBTVec (toDBType ctx a) (toDB ctx n)
 
 -- Convert named expression to De Bruijn
 toDB :: Context -> Exp -> DBExp
@@ -125,6 +136,13 @@ toDB ctx (EElimBool p t f b) = DBElimBool (toDB ctx p) (toDB ctx t) (toDB ctx f)
 toDB ctx (EPair a b) = DBPair (toDB ctx a) (toDB ctx b)
 toDB ctx (EFst p) = DBFst (toDB ctx p)
 toDB ctx (ESnd p) = DBSnd (toDB ctx p)
+-- Phase 3: Vector types
+toDB ctx (EVecType a n) = DBExprVec (toDB ctx a) (toDB ctx n)
+toDB ctx ENil = DBNil
+toDB ctx (ECons a as) = DBCons (toDB ctx a) (toDB ctx as)
+toDB ctx (EHead v) = DBHead (toDB ctx v)
+toDB ctx (ETail v) = DBTail (toDB ctx v)
+toDB ctx (EAppend v1 v2) = DBAppend (toDB ctx v1) (toDB ctx v2)
 
 -- Convert statements to De Bruijn
 toDBStmt :: Context -> Stmt -> DBStmt
@@ -176,6 +194,13 @@ shift n k (DBElimBool p t f b) = DBElimBool (shift n k p) (shift n k t) (shift n
 shift n k (DBPair a b) = DBPair (shift n k a) (shift n k b)
 shift n k (DBFst p) = DBFst (shift n k p)
 shift n k (DBSnd p) = DBSnd (shift n k p)
+-- Phase 3: Vector types
+shift n k (DBExprVec a len) = DBExprVec (shift n k a) (shift n k len)
+shift n k DBNil = DBNil
+shift n k (DBCons a as) = DBCons (shift n k a) (shift n k as)
+shift n k (DBHead v) = DBHead (shift n k v)
+shift n k (DBTail v) = DBTail (shift n k v)
+shift n k (DBAppend v1 v2) = DBAppend (shift n k v1) (shift n k v2)
 
 -- Shift function for types
 shiftType :: Int -> Int -> DBType -> DBType
@@ -191,6 +216,8 @@ shiftType n k (DBTDepFun a b) = DBTDepFun (shiftType n k a) (shiftType (n + 1) k
 shiftType n k DBTTop = DBTTop
 shiftType n k DBTBot = DBTBot
 shiftType n k (DBTPair a b) = DBTPair (shiftType n k a) (shiftType n k b)
+-- Phase 3: Vector types
+shiftType n k (DBTVec a len) = DBTVec (shiftType n k a) (shift n k len)
 
 -- Substitution: subst n u e
 -- Replace variable n with u, decrement indices > n
@@ -238,3 +265,10 @@ subst n u (DBElimBool p t f b) = DBElimBool (subst n u p) (subst n u t) (subst n
 subst n u (DBPair a b) = DBPair (subst n u a) (subst n u b)
 subst n u (DBFst p) = DBFst (subst n u p)
 subst n u (DBSnd p) = DBSnd (subst n u p)
+-- Phase 3: Vector types
+subst n u (DBExprVec a len) = DBExprVec (subst n u a) (subst n u len)
+subst n u DBNil = DBNil
+subst n u (DBCons a as) = DBCons (subst n u a) (subst n u as)
+subst n u (DBHead v) = DBHead (subst n u v)
+subst n u (DBTail v) = DBTail (subst n u v)
+subst n u (DBAppend v1 v2) = DBAppend (subst n u v1) (subst n u v2)

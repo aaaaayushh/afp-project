@@ -16,6 +16,8 @@ data Value
   -- Phase 2: Top and Pair values
   | VTop -- unit value
   | VPair Value Value -- pair value
+  -- Phase 3: Vector values
+  | VVec [Value] -- Vector represented as list of values
   deriving (Show, Eq)
 
 data Nat

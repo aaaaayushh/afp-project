@@ -17,6 +17,7 @@ TU.      Type1 ::= "U";
 TTop.    Type1 ::= "Top";
 TBot.    Type1 ::= "Bot";
 TPair.   Type1 ::= "[" Type "," Type "]";
+TVec.    Type1 ::= "Vector" Type Exp;
 TFun.    Type  ::= Type1 "->" Type;
 TDepFun. Type  ::= "(" Ident ":" Type ")" "->" Type;
 
@@ -45,6 +46,7 @@ ETop.  Exp8 ::= "Top";
 EBot.  Exp8 ::= "Bot";
 
 EPairType. Exp8 ::= "[" Exp "," Exp "]";
+EVecType.  Exp8 ::= "Vector" Exp8 Exp8;
 
 -- Function type expressions (lower precedence than application)
 EFunType. Exp1 ::= Exp2 "->" Exp1;
@@ -91,6 +93,15 @@ EElimBool. Exp8 ::= "elimBool" Exp8 Exp8 Exp8 Exp8;
 EPair.   Exp8 ::= "(" Exp "," Exp ")";
 EFst.    Exp8 ::= "fst" Exp8;
 ESnd.    Exp8 ::= "snd" Exp8;
+
+-- Phase 3: Vector types
+ENil.    Exp8 ::= "[]";
+EHead.   Exp8 ::= "head" Exp8;
+ETail.   Exp8 ::= "tail" Exp8;
+EAppend. Exp8 ::= "append" Exp8 Exp8;
+
+-- Vector cons operation (right associative, lower precedence)
+ECons.   Exp2 ::= Exp3 "::" Exp2;
 
 -- Functions
 EApp. Exp8 ::= Exp8 Exp7;

@@ -3,7 +3,7 @@ module Interp.DBExpr where
 import DBEnv
 import DeBruijn
 import Evaluator
-import Lang.Abs (Ident (..), Type (..))
+import Lang.Abs (Exp (..), Ident (..), Type (..))
 import Value (Closure (..), Nat (..), Value (..))
 import Value qualified
 
@@ -94,6 +94,17 @@ interp (DBExprPair a b) env = do
   case (va, vb) of
     (VType ta, VType tb) -> return (VType (TPair ta tb))
     _ -> throw "Arguments to pair type constructor '[,]' must be types"
+-- Phase 3: Vector type expressions
+interp (DBExprVec a n) env = do
+  va <- interp a env
+  vn <- interp n env
+  case (va, vn) of
+    (VType ta, VNat nat) -> return (VType (TVec ta (natToExp nat)))
+    _ -> throw "Arguments to vector type constructor 'Vector' must be type and natural number"
+  where
+    natToExp :: Nat -> Exp
+    natToExp Zero = EZero
+    natToExp (Suc n) = ESuc (natToExp n)
 -- Natural numbers
 interp DBZero _ = return $ VNat Zero
 interp (DBSuc e) env = do
@@ -209,3 +220,30 @@ interp (DBSnd p) env = do
   case vp of
     VPair _ vb -> return vb
     _ -> throw "snd requires pair argument"
+
+-- Phase 3: Vector operations
+interp DBNil _ = return $ VVec []
+interp (DBCons a as) env = do
+  va <- interp a env
+  vas <- interp as env
+  case vas of
+    VVec vs -> return $ VVec (va : vs)
+    _ -> throw "cons (::) requires vector as second argument"
+interp (DBHead v) env = do
+  vv <- interp v env
+  case vv of
+    VVec (x : _) -> return x
+    VVec [] -> throw "Cannot take head of empty vector"
+    _ -> throw "head requires vector argument"
+interp (DBTail v) env = do
+  vv <- interp v env
+  case vv of
+    VVec (_ : xs) -> return $ VVec xs
+    VVec [] -> throw "Cannot take tail of empty vector"
+    _ -> throw "tail requires vector argument"
+interp (DBAppend v1 v2) env = do
+  vv1 <- interp v1 env
+  vv2 <- interp v2 env
+  case (vv1, vv2) of
+    (VVec xs, VVec ys) -> return $ VVec (xs ++ ys)
+    _ -> throw "append requires two vector arguments"

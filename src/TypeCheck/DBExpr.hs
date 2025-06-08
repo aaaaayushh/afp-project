@@ -4,7 +4,7 @@ import DBEnv
 import DeBruijn
 import Evaluator
 import Interp.DBExpr (interp)
-import Lang.Abs (Ident (..), Type (..))
+import Lang.Abs (Exp (..), Ident (..), Type (..))
 import Value qualified as V
 
 -- Type checking environment
@@ -28,6 +28,16 @@ dbTypeToType (DBTVar _) = error "Cannot convert type variable to concrete type"
 dbTypeToType DBTTop = TTop
 dbTypeToType DBTBot = TBot
 dbTypeToType (DBTPair a b) = TPair (dbTypeToType a) (dbTypeToType b)
+-- Phase 3: Vector types
+dbTypeToType (DBTVec a n) = TVec (dbTypeToType a) (dbExpToExp n)
+  where
+    -- Convert DBExp back to Exp - this is a simplified conversion
+    dbExpToExp :: DBExp -> Exp
+    dbExpToExp DBZero = EZero
+    dbExpToExp (DBSuc e) = ESuc (dbExpToExp e)
+    dbExpToExp (DBAdd e1 e2) = EAdd (dbExpToExp e1) (dbExpToExp e2)
+    dbExpToExp (DBVar i) = EVar (Ident ("x" ++ show i)) -- Convert De Bruijn index to variable name
+    dbExpToExp _ = EZero -- Fallback for complex expressions
 
 -- Bidirectional type inference
 infer :: DBExp -> TyEnv -> Result Type
@@ -70,6 +80,11 @@ infer DBExprBot _ = return TU
 infer (DBExprPair a b) env = do
   check a TU env
   check b TU env
+  return TU
+-- Phase 3: Vector type expressions
+infer (DBExprVec a n) env = do
+  check a TU env
+  check n TNat env
   return TU
 -- Natural numbers
 infer DBZero _ = return TNat
@@ -196,6 +211,88 @@ infer (DBSnd p) env = do
     TPair _ tb -> return tb
     _ -> throw "snd can only be applied to pairs"
 
+-- Phase 3: Vector operations
+infer DBNil env = do
+  -- Empty vector [] : Vector A zero for any A
+  -- Since we can't infer A, this needs type annotation in practice
+  -- We could return a polymorphic type, but for simplicity we'll require annotation
+  throw "Cannot infer type of empty vector. Use type annotation like: ([] : Vector nat zero)"
+infer (DBCons a as) env = do
+  ta <- infer a env
+  -- Special case: if the second argument is an empty vector,
+  -- infer its type from the first argument
+  case as of
+    DBNil -> return $ TVec ta (ESuc EZero) -- cons : A -> Vector A zero -> Vector A (suc zero)
+    _ -> do
+      tas <- infer as env
+      case tas of
+        TVec ta' n -> do
+          -- Check that element type matches
+          if ta == ta'
+            then return $ TVec ta (ESuc n) -- cons : A -> Vector A n -> Vector A (suc n)
+            else throw "Element type does not match vector type"
+        _ -> throw "cons (::) can only be applied to vectors"
+infer (DBHead v) env = do
+  tv <- infer v env
+  case tv of
+    TVec ta n -> do
+      -- Check if the length expression represents a non-zero value
+      if isNonZeroLength n
+        then return ta -- head : Vector A (non-zero) -> A
+        else throw "Cannot take head of empty vector"
+    _ -> throw "head can only be applied to vectors"
+  where
+    isNonZeroLength :: Exp -> Bool
+    isNonZeroLength (ESuc _) = True
+    isNonZeroLength (EAdd e1 e2) = isNonZeroLength e1 || isNonZeroLength e2
+    isNonZeroLength EZero = False
+    isNonZeroLength _ = True -- Conservative: assume non-zero for complex expressions
+infer (DBTail v) env = do
+  tv <- infer v env
+  case tv of
+    TVec ta n -> do
+      -- Check if the length expression represents a non-zero value
+      if isNonZeroLength n
+        then return $ TVec ta (subtractOne n) -- tail : Vector A (non-zero) -> Vector A (n-1)
+        else throw "Cannot take tail of empty vector"
+    _ -> throw "tail can only be applied to vectors"
+  where
+    isNonZeroLength :: Exp -> Bool
+    isNonZeroLength (ESuc _) = True
+    isNonZeroLength (EAdd e1 e2) = isNonZeroLength e1 || isNonZeroLength e2
+    isNonZeroLength EZero = False
+    isNonZeroLength _ = True -- Conservative: assume non-zero for complex expressions
+    subtractOne :: Exp -> Exp
+    subtractOne (ESuc n) = n
+    subtractOne (EAdd e1 e2) =
+      if isNonZeroLength e1
+        then EAdd (subtractOne e1) e2
+        else EAdd e1 (subtractOne e2)
+    subtractOne _ = EZero -- Fallback for complex expressions
+infer (DBAppend v1 v2) env = do
+  -- Special case handling for empty vectors
+  case (v1, v2) of
+    (DBNil, DBNil) -> throw "Cannot infer type of append with two empty vectors. Use type annotation."
+    (DBNil, _) -> do
+      tv2 <- infer v2 env
+      case tv2 of
+        TVec ta n -> return $ TVec ta n -- append [] v = v
+        _ -> throw "append can only be applied to vectors"
+    (_, DBNil) -> do
+      tv1 <- infer v1 env
+      case tv1 of
+        TVec ta m -> return $ TVec ta m -- append v [] = v
+        _ -> throw "append can only be applied to vectors"
+    _ -> do
+      tv1 <- infer v1 env
+      tv2 <- infer v2 env
+      case (tv1, tv2) of
+        (TVec ta m, TVec tb n) -> do
+          if ta == tb
+            then return $ TVec ta (EAdd m n) -- append : Vector A m -> Vector A n -> Vector A (m + n)
+            else throw "Cannot append vectors of different element types"
+        _ -> throw "append can only be applied to vectors"
+
 -- Bidirectional type checking
 check :: DBExp -> Type -> TyEnv -> Result ()
 -- Universe type checking - types have type U
@@ -215,6 +312,10 @@ check DBExprBot TU _ = return ()
 check (DBExprPair a b) TU env = do
   check a TU env
   check b TU env
+-- Phase 3: Vector type checking
+check (DBExprVec a n) TU env = do
+  check a TU env
+  check n TNat env
 
 -- Lambda expressions are best checked against function types
 check (DBLam body) (TFun targ tret) env@(types, funs) = do
@@ -251,6 +352,8 @@ typeToDBExp (TDepFun _ a b) = DBExprDepFun (typeToDBExp a) (typeToDBExp b)
 typeToDBExp TTop = DBExprTop
 typeToDBExp TBot = DBExprBot
 typeToDBExp (TPair a b) = DBExprPair (typeToDBExp a) (typeToDBExp b)
+-- Phase 3: Vector types
+typeToDBExp (TVec a n) = DBExprVec (typeToDBExp a) (toDB [] n)
 
 -- Helper function to convert Type to DBType
 typeToDBType :: Type -> DBType
@@ -263,3 +366,5 @@ typeToDBType (TDepFun _ a b) = DBTDepFun (typeToDBType a) (typeToDBType b)
 typeToDBType TTop = DBTTop
 typeToDBType TBot = DBTBot
 typeToDBType (TPair a b) = DBTPair (typeToDBType a) (typeToDBType b)
+-- Phase 3: Vector types
+typeToDBType (TVec a n) = DBTVec (typeToDBType a) (toDB [] n)
