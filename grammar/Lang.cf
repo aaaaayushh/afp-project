@@ -14,6 +14,9 @@ Program. Program ::= [Stmt] Exp ;
 TNat.    Type1 ::= "nat";
 TBool.   Type1 ::= "bool";
 TU.      Type1 ::= "U";
+TTop.    Type1 ::= "Top";
+TBot.    Type1 ::= "Bot";
+TPair.   Type1 ::= "[" Type "," Type "]";
 TFun.    Type  ::= Type1 "->" Type;
 TDepFun. Type  ::= "(" Ident ":" Type ")" "->" Type;
 
@@ -38,6 +41,10 @@ EU. Exp8 ::= "U";
 -- Type expressions as values (for dependent types)
 ENat.  Exp8 ::= "nat";
 EBool. Exp8 ::= "bool";
+ETop.  Exp8 ::= "Top";
+EBot.  Exp8 ::= "Bot";
+
+EPairType. Exp8 ::= "[" Exp "," Exp "]";
 
 -- Function type expressions (lower precedence than application)
 EFunType. Exp1 ::= Exp2 "->" Exp1;
@@ -72,6 +79,18 @@ EIf.  Exp8 ::= "if" Exp "then" Exp "else" Exp;
 -- Let bindings
 ELet. Exp8 ::= "let" Ident "=" Exp "in" Exp;
 EVar. Exp8 ::= Ident;
+
+-- Phase 2: Top/Bot types
+ETt.     Exp8 ::= "tt";
+EMagic.  Exp8 ::= "magic";
+
+-- Phase 2: Boolean eliminator  
+EElimBool. Exp8 ::= "elimBool" Exp8 Exp8 Exp8 Exp8;
+
+-- Phase 2: Pair types
+EPair.   Exp8 ::= "(" Exp "," Exp ")";
+EFst.    Exp8 ::= "fst" Exp8;
+ESnd.    Exp8 ::= "snd" Exp8;
 
 -- Functions
 EApp. Exp8 ::= Exp8 Exp7;
