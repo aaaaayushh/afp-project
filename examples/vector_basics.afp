@@ -1,0 +1,2 @@
+val nums = zero :: (suc zero) :: (suc (suc zero)) :: [];
+head (tail nums) 

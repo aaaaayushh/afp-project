@@ -1,0 +1,3 @@
+val first = True :: False :: [];
+val second = True :: [];
+head (append first second) 

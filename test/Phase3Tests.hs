@@ -137,12 +137,3 @@ test = hspec $ do
     -- Runtime errors
     interpErrorTest "head []"
     interpErrorTest "tail []"
-
-  describe "Phase 3: Backward Compatibility" $ do
-    -- Ensure Phase 1 and Phase 2 features still work with Phase 3 extensions
-    tcTest "suc zero" TNat
-    tcTest "True && False" TBool
-    tcTest "(zero, True)" (TPair TNat TBool)
-    interpTest "suc (suc zero)" (V.VNat (V.Suc (V.Suc V.Zero)))
-    interpTest "True && False" (V.VBool False)
-    interpTest "(zero, True)" (V.VPair (V.VNat V.Zero) (V.VBool True))

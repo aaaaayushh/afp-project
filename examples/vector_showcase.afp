@@ -1,0 +1,5 @@
+val numbers = zero :: suc zero :: suc (suc zero) :: [];
+val booleans = True :: False :: [];
+val combined_length = append numbers (suc (suc (suc zero)) :: []);
+val first_two = head combined_length :: head (tail combined_length) :: [];
+head (tail first_two) 

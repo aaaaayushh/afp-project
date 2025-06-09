@@ -1,0 +1,3 @@
+val single_zero = zero :: [];
+val single_true = True :: [];
+head single_zero 

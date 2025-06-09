@@ -1,0 +1,3 @@
+val bool_vec = True :: False :: True :: [];
+val result_vec = if head bool_vec then suc zero :: [] else zero :: [];
+head result_vec 

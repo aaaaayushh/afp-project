@@ -1,0 +1,4 @@
+val nums1 = zero :: suc zero :: [];
+val nums2 = suc (suc zero) :: suc (suc (suc zero)) :: [];
+val combined = append nums1 nums2;
+head (tail (tail combined)) 
