@@ -1,10 +1,9 @@
 module Env where
 
-import qualified Data.Map as Map
+import CustomMap qualified as Map
+import Lang.Abs (Ident)
 
-import Lang.Abs ( Ident )
-
-type Env a = Map.Map Ident a
+type Env a = Map.CustomMap Ident a
 
 empty :: Env a
 empty = Map.empty

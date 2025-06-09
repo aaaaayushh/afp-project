@@ -1,13 +1,13 @@
 module DBEnv where
 
-import qualified Data.Map as Map
+import CustomMap qualified as Map
 import Lang.Abs (Ident)
 
 -- For values: use list (index-based lookup)
 type DBEnv a = [a]
 
 -- For functions: still use map (function names preserved)
-type FunEnv a = Map.Map Ident a
+type FunEnv a = Map.CustomMap Ident a
 
 -- De Bruijn environment operations
 emptyDB :: DBEnv a

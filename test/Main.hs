@@ -1,6 +1,7 @@
 module Main where
 
 import BogusTests qualified as Bogus (test)
+import CustomMapTests qualified as CustomMap (test)
 import DeBruijnTests qualified as DeBruijn (test)
 import InterpTests qualified as Interp (test)
 import Phase1Tests qualified as Phase1 (test)
@@ -17,3 +18,4 @@ main = do
   Phase2.test
   Phase3.test
   Bogus.test
+  CustomMap.test
