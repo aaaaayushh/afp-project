@@ -317,6 +317,15 @@ check (DBExprVec a n) TU env = do
   check a TU env
   check n TNat env
 
+-- Phase 3: Empty vector can be checked against any vector type with length zero
+check DBNil (TVec _elemType lengthExp) env = do
+  -- Check that the length expression evaluates to zero
+  lengthVal <- interp (toDB [] lengthExp) (emptyDB, emptyFun)
+  case lengthVal of
+    V.VNat V.Zero -> return () -- Empty vector has correct length zero
+    V.VNat (V.Suc _) -> throw "Cannot assign empty vector to non-zero length vector type"
+    _ -> throw "Vector length must be a natural number"
+
 -- Lambda expressions are best checked against function types
 check (DBLam body) (TFun targ tret) env@(types, funs) = do
   check body tret (extendDB targ types, funs)

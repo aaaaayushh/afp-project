@@ -72,6 +72,7 @@ data DBType
 
 data DBStmt
   = DBSLet DBExp -- val x = e (variable name removed)
+  | DBSLetAnn DBType DBExp -- val x : T = e (variable name removed, type annotation)
   | DBSFun Ident DBType DBExp -- fun f(x:T) = e (parameter name removed, type in DB form)
   deriving (Show, Eq)
 
@@ -147,6 +148,7 @@ toDB ctx (EAppend v1 v2) = DBAppend (toDB ctx v1) (toDB ctx v2)
 -- Convert statements to De Bruijn
 toDBStmt :: Context -> Stmt -> DBStmt
 toDBStmt ctx (SLet x e) = DBSLet (toDB ctx e)
+toDBStmt ctx (SLetAnn x t e) = DBSLetAnn (toDBType ctx t) (toDB ctx e)
 toDBStmt ctx (SFun f x t e) = DBSFun f (toDBType ctx t) (toDB (x : ctx) e)
 
 -- Shift function for expressions: shift n k e

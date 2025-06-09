@@ -1,0 +1,2 @@
+val empty_vector : Vector nat zero = [];
+empty_vector 

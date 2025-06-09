@@ -18,6 +18,7 @@ convertStmtsTC = convertStmts' []
       let dbStmt = toDBStmt ctx stmt
           newCtx = case stmt of
             (SLet x _) -> x : ctx -- Add variable to context
+            (SLetAnn x _ _) -> x : ctx -- Add type-annotated variable to context
             _ -> ctx -- Functions don't add to variable context
        in dbStmt : convertStmts' newCtx stmts
 
@@ -27,7 +28,13 @@ infer :: Program -> (DBEnv Type, FunEnv TClosure) -> Result Type
 infer (Program stmts exp) env = do
   let dbStmts = convertStmtsTC stmts
       -- Build context for final expression (all bound variables in reverse order)
-      varCtx = reverse [x | (SLet x _) <- stmts]
+      varCtx =
+        reverse
+          [ x | stmt <- stmts, x <- case stmt of
+                                 SLet x _ -> [x]
+                                 SLetAnn x _ _ -> [x]
+                                 _ -> []
+          ]
       dbExp = toDB varCtx exp
   nenv <- prepare dbStmts env
   E.infer dbExp nenv
