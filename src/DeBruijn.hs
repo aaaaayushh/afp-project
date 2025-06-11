@@ -1,5 +1,10 @@
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TemplateHaskell #-}
+
 module DeBruijn where
 
+import Control.Lens hiding (Context)
+import Control.Lens.Plated
 import Data.List (elemIndex)
 import Lang.Abs (Exp (..), Ident, Stmt (..), Type (..))
 
@@ -79,6 +84,91 @@ data DBStmt
 -- Context for conversion (maps variable names to De Bruijn indices)
 type Context = [Ident]
 
+-- Plated instances for automatic recursive traversal
+instance Plated DBExp where
+  plate f = \case
+    DBVar i -> pure (DBVar i)
+    DBFunRef x -> pure (DBFunRef x)
+    DBLam e -> DBLam <$> f e
+    DBLamAnn t e -> DBLamAnn t <$> f e
+    DBU -> pure DBU
+    DBExprNat -> pure DBExprNat
+    DBExprBool -> pure DBExprBool
+    DBExprFun a b -> DBExprFun <$> f a <*> f b
+    DBExprDepFun a b -> DBExprDepFun <$> f a <*> f b
+    DBExprTop -> pure DBExprTop
+    DBExprBot -> pure DBExprBot
+    DBExprPair a b -> DBExprPair <$> f a <*> f b
+    DBZero -> pure DBZero
+    DBSuc e -> DBSuc <$> f e
+    DBAdd e1 e2 -> DBAdd <$> f e1 <*> f e2
+    DBMul e1 e2 -> DBMul <$> f e1 <*> f e2
+    DBTrue -> pure DBTrue
+    DBFalse -> pure DBFalse
+    DBNot e -> DBNot <$> f e
+    DBAnd e1 e2 -> DBAnd <$> f e1 <*> f e2
+    DBOr e1 e2 -> DBOr <$> f e1 <*> f e2
+    DBEq e1 e2 -> DBEq <$> f e1 <*> f e2
+    DBLt e1 e2 -> DBLt <$> f e1 <*> f e2
+    DBGt e1 e2 -> DBGt <$> f e1 <*> f e2
+    DBLeq e1 e2 -> DBLeq <$> f e1 <*> f e2
+    DBGeq e1 e2 -> DBGeq <$> f e1 <*> f e2
+    DBIf c t e -> DBIf <$> f c <*> f t <*> f e
+    DBLet e body -> DBLet <$> f e <*> f body
+    DBApp fn e -> DBApp <$> f fn <*> f e
+    DBTt -> pure DBTt
+    DBMagic -> pure DBMagic
+    DBElimBool p t fn b -> DBElimBool <$> f p <*> f t <*> f fn <*> f b
+    DBPair a b -> DBPair <$> f a <*> f b
+    DBFst p -> DBFst <$> f p
+    DBSnd p -> DBSnd <$> f p
+    DBExprVec a len -> DBExprVec <$> f a <*> f len
+    DBNil -> pure DBNil
+    DBCons a as -> DBCons <$> f a <*> f as
+    DBHead v -> DBHead <$> f v
+    DBTail v -> DBTail <$> f v
+    DBAppend v1 v2 -> DBAppend <$> f v1 <*> f v2
+
+instance Plated DBType where
+  plate f = \case
+    DBTNat -> pure DBTNat
+    DBTBool -> pure DBTBool
+    DBTU -> pure DBTU
+    DBTFun a b -> DBTFun <$> f a <*> f b
+    DBTDepFun a b -> DBTDepFun <$> f a <*> f b
+    DBTVar i -> pure (DBTVar i)
+    DBTTop -> pure DBTTop
+    DBTBot -> pure DBTBot
+    DBTPair a b -> DBTPair <$> f a <*> f b
+    DBTVec a n -> DBTVec <$> f a <*> pure n -- Note: n is DBExp, not DBType
+
+-- Specialized traversal for shifting type variables with proper cutoff handling
+shiftTypeVarsFrom :: Int -> Int -> DBType -> DBType
+shiftTypeVarsFrom cutoff k = go cutoff
+  where
+    go :: Int -> DBType -> DBType
+    go c = \case
+      DBTVar i
+        | i >= c -> DBTVar (i + k)
+        | otherwise -> DBTVar i
+      DBTDepFun a b -> DBTDepFun (go c a) (go (c + 1) b)
+      other -> other & plate %~ go c
+
+-- Specialized traversal for shifting variables with proper cutoff handling
+shiftVarsFrom :: Int -> Int -> DBExp -> DBExp
+shiftVarsFrom cutoff k = go cutoff
+  where
+    go :: Int -> DBExp -> DBExp
+    go c = \case
+      DBVar i
+        | i >= c -> DBVar (i + k)
+        | otherwise -> DBVar i
+      DBLam e -> DBLam (go (c + 1) e)
+      DBLamAnn t e -> DBLamAnn (shiftTypeVarsFrom cutoff k t) (go (c + 1) e)
+      DBExprDepFun a b -> DBExprDepFun (go c a) (go (c + 1) b)
+      DBLet e body -> DBLet (go c e) (go (c + 1) body)
+      other -> other & plate %~ go c
+
 -- Convert types to De Bruijn form
 toDBType :: Context -> Type -> DBType
 toDBType ctx TNat = DBTNat
@@ -151,126 +241,28 @@ toDBStmt ctx (SLet x e) = DBSLet (toDB ctx e)
 toDBStmt ctx (SLetAnn x t e) = DBSLetAnn (toDBType ctx t) (toDB ctx e)
 toDBStmt ctx (SFun f x t e) = DBSFun f (toDBType ctx t) (toDB (x : ctx) e)
 
--- Shift function for expressions: shift n k e
+-- Lens-based shift function for expressions: shift n k e
 -- Increases all indices >= n by k
 shift :: Int -> Int -> DBExp -> DBExp
-shift n k (DBVar i)
-  | i >= n = DBVar (i + k)
-  | otherwise = DBVar i
-shift n k (DBFunRef f) = DBFunRef f
-shift n k (DBLam e) = DBLam (shift (n + 1) k e)
-shift n k (DBLamAnn t e) = DBLamAnn (shiftType n k t) (shift (n + 1) k e)
-shift n k DBU = DBU
--- Type expressions
-shift n k DBExprNat = DBExprNat
-shift n k DBExprBool = DBExprBool
-shift n k (DBExprFun a b) = DBExprFun (shift n k a) (shift n k b)
-shift n k (DBExprDepFun a b) = DBExprDepFun (shift n k a) (shift (n + 1) k b)
--- Phase 2: Top/Bot type expressions
-shift n k DBExprTop = DBExprTop
-shift n k DBExprBot = DBExprBot
-shift n k (DBExprPair a b) = DBExprPair (shift n k a) (shift n k b)
-shift n k DBZero = DBZero
-shift n k (DBSuc e) = DBSuc (shift n k e)
-shift n k (DBAdd e1 e2) = DBAdd (shift n k e1) (shift n k e2)
-shift n k (DBMul e1 e2) = DBMul (shift n k e1) (shift n k e2)
-shift n k DBTrue = DBTrue
-shift n k DBFalse = DBFalse
-shift n k (DBNot e) = DBNot (shift n k e)
-shift n k (DBAnd e1 e2) = DBAnd (shift n k e1) (shift n k e2)
-shift n k (DBOr e1 e2) = DBOr (shift n k e1) (shift n k e2)
-shift n k (DBEq e1 e2) = DBEq (shift n k e1) (shift n k e2)
-shift n k (DBLt e1 e2) = DBLt (shift n k e1) (shift n k e2)
-shift n k (DBGt e1 e2) = DBGt (shift n k e1) (shift n k e2)
-shift n k (DBLeq e1 e2) = DBLeq (shift n k e1) (shift n k e2)
-shift n k (DBGeq e1 e2) = DBGeq (shift n k e1) (shift n k e2)
-shift n k (DBIf c t e) = DBIf (shift n k c) (shift n k t) (shift n k e)
-shift n k (DBLet e body) = DBLet (shift n k e) (shift (n + 1) k body)
-shift n k (DBApp f e) = DBApp (shift n k f) (shift n k e)
--- Phase 2: Top/Bot values and eliminators
-shift n k DBTt = DBTt
-shift n k DBMagic = DBMagic
--- Phase 2: Boolean eliminator
-shift n k (DBElimBool p t f b) = DBElimBool (shift n k p) (shift n k t) (shift n k f) (shift n k b)
--- Phase 2: Pair types
-shift n k (DBPair a b) = DBPair (shift n k a) (shift n k b)
-shift n k (DBFst p) = DBFst (shift n k p)
-shift n k (DBSnd p) = DBSnd (shift n k p)
--- Phase 3: Vector types
-shift n k (DBExprVec a len) = DBExprVec (shift n k a) (shift n k len)
-shift n k DBNil = DBNil
-shift n k (DBCons a as) = DBCons (shift n k a) (shift n k as)
-shift n k (DBHead v) = DBHead (shift n k v)
-shift n k (DBTail v) = DBTail (shift n k v)
-shift n k (DBAppend v1 v2) = DBAppend (shift n k v1) (shift n k v2)
+shift = shiftVarsFrom
 
--- Shift function for types
+-- Lens-based shift function for types
 shiftType :: Int -> Int -> DBType -> DBType
-shiftType n k (DBTVar i)
-  | i >= n = DBTVar (i + k)
-  | otherwise = DBTVar i
-shiftType n k DBTNat = DBTNat
-shiftType n k DBTBool = DBTBool
-shiftType n k DBTU = DBTU
-shiftType n k (DBTFun a b) = DBTFun (shiftType n k a) (shiftType n k b)
-shiftType n k (DBTDepFun a b) = DBTDepFun (shiftType n k a) (shiftType (n + 1) k b)
--- Phase 2: Top/Bot and pair types
-shiftType n k DBTTop = DBTTop
-shiftType n k DBTBot = DBTBot
-shiftType n k (DBTPair a b) = DBTPair (shiftType n k a) (shiftType n k b)
--- Phase 3: Vector types
-shiftType n k (DBTVec a len) = DBTVec (shiftType n k a) (shift n k len)
+shiftType = shiftTypeVarsFrom
 
--- Substitution: subst n u e
+-- Lens-based substitution: subst n u e
 -- Replace variable n with u, decrement indices > n
 subst :: Int -> DBExp -> DBExp -> DBExp
-subst n u (DBVar i)
-  | i == n = u
-  | i > n = DBVar (i - 1)
-  | otherwise = DBVar i
-subst n u (DBFunRef f) = DBFunRef f
-subst n u (DBLam e) = DBLam (subst (n + 1) (shift 0 1 u) e)
-subst n u (DBLamAnn t e) = DBLamAnn t (subst (n + 1) (shift 0 1 u) e) -- Type doesn't need substitution in this simple version
-subst n u DBU = DBU
--- Type expressions
-subst n u DBExprNat = DBExprNat
-subst n u DBExprBool = DBExprBool
-subst n u (DBExprFun a b) = DBExprFun (subst n u a) (subst n u b)
-subst n u (DBExprDepFun a b) = DBExprDepFun (subst n u a) (subst (n + 1) (shift 0 1 u) b)
--- Phase 2: Top/Bot type expressions
-subst n u DBExprTop = DBExprTop
-subst n u DBExprBot = DBExprBot
-subst n u (DBExprPair a b) = DBExprPair (subst n u a) (subst n u b)
-subst n u DBZero = DBZero
-subst n u (DBSuc e) = DBSuc (subst n u e)
-subst n u (DBAdd e1 e2) = DBAdd (subst n u e1) (subst n u e2)
-subst n u (DBMul e1 e2) = DBMul (subst n u e1) (subst n u e2)
-subst n u DBTrue = DBTrue
-subst n u DBFalse = DBFalse
-subst n u (DBNot e) = DBNot (subst n u e)
-subst n u (DBAnd e1 e2) = DBAnd (subst n u e1) (subst n u e2)
-subst n u (DBOr e1 e2) = DBOr (subst n u e1) (subst n u e2)
-subst n u (DBEq e1 e2) = DBEq (subst n u e1) (subst n u e2)
-subst n u (DBLt e1 e2) = DBLt (subst n u e1) (subst n u e2)
-subst n u (DBGt e1 e2) = DBGt (subst n u e1) (subst n u e2)
-subst n u (DBLeq e1 e2) = DBLeq (subst n u e1) (subst n u e2)
-subst n u (DBGeq e1 e2) = DBGeq (subst n u e1) (subst n u e2)
-subst n u (DBIf c t e) = DBIf (subst n u c) (subst n u t) (subst n u e)
-subst n u (DBLet e body) = DBLet (subst n u e) (subst (n + 1) (shift 0 1 u) body)
-subst n u (DBApp f e) = DBApp (subst n u f) (subst n u e)
--- Phase 2: Top/Bot values and eliminators
-subst n u DBTt = DBTt
-subst n u DBMagic = DBMagic
--- Phase 2: Boolean eliminator
-subst n u (DBElimBool p t f b) = DBElimBool (subst n u p) (subst n u t) (subst n u f) (subst n u b)
--- Phase 2: Pair types
-subst n u (DBPair a b) = DBPair (subst n u a) (subst n u b)
-subst n u (DBFst p) = DBFst (subst n u p)
-subst n u (DBSnd p) = DBSnd (subst n u p)
--- Phase 3: Vector types
-subst n u (DBExprVec a len) = DBExprVec (subst n u a) (subst n u len)
-subst n u DBNil = DBNil
-subst n u (DBCons a as) = DBCons (subst n u a) (subst n u as)
-subst n u (DBHead v) = DBHead (subst n u v)
-subst n u (DBTail v) = DBTail (subst n u v)
-subst n u (DBAppend v1 v2) = DBAppend (subst n u v1) (subst n u v2)
+subst n u = transformWithDepth 0
+  where
+    transformWithDepth :: Int -> DBExp -> DBExp
+    transformWithDepth depth = \case
+      DBVar i
+        | i == n + depth -> shift 0 depth u
+        | i > n + depth -> DBVar (i - 1)
+        | otherwise -> DBVar i
+      DBLam e -> DBLam (transformWithDepth (depth + 1) e)
+      DBLamAnn t e -> DBLamAnn t (transformWithDepth (depth + 1) e)
+      DBExprDepFun a b -> DBExprDepFun (transformWithDepth depth a) (transformWithDepth (depth + 1) b)
+      DBLet e body -> DBLet (transformWithDepth depth e) (transformWithDepth (depth + 1) body)
+      other -> other & plate %~ transformWithDepth depth
