@@ -35,6 +35,8 @@ library lang
                     , DeBruijn
                     , DBEnv
                     , CustomMap
+                    , Logger
+                    , LoggingEvaluator
                     -- , Interp.Expr
                     -- , Interp.Stmt
                     -- , Interp.Prog
@@ -50,6 +52,10 @@ library lang
 
     build-depends:    grammar
                     , containers
+                    , stm
+                    , async
+                    , text
+                    , time
 
 -- the main executable which lets you run the interpreter
 executable main

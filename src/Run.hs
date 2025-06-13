@@ -10,6 +10,7 @@ import Lang.Abs
 import TypeCheck.DBProg (infer)
 import Value (Value)
 
+-- only used by tests to keep them clean
 infertype :: String -> Result Type
 infertype = evaluate (infer, "Type")
 
