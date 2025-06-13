@@ -1,5 +1,6 @@
 module DeBruijn where
 
+import Control.Lens hiding (Context)
 import Data.List (elemIndex)
 import Lang.Abs (Exp (..), Ident, Stmt (..), Type (..))
 
@@ -151,59 +152,6 @@ toDBStmt ctx (SLet x e) = DBSLet (toDB ctx e)
 toDBStmt ctx (SLetAnn x t e) = DBSLetAnn (toDBType ctx t) (toDB ctx e)
 toDBStmt ctx (SFun f x t e) = DBSFun f (toDBType ctx t) (toDB (x : ctx) e)
 
--- Shift function for expressions: shift n k e
--- Increases all indices >= n by k
-shift :: Int -> Int -> DBExp -> DBExp
-shift n k (DBVar i)
-  | i >= n = DBVar (i + k)
-  | otherwise = DBVar i
-shift n k (DBFunRef f) = DBFunRef f
-shift n k (DBLam e) = DBLam (shift (n + 1) k e)
-shift n k (DBLamAnn t e) = DBLamAnn (shiftType n k t) (shift (n + 1) k e)
-shift n k DBU = DBU
--- Type expressions
-shift n k DBExprNat = DBExprNat
-shift n k DBExprBool = DBExprBool
-shift n k (DBExprFun a b) = DBExprFun (shift n k a) (shift n k b)
-shift n k (DBExprDepFun a b) = DBExprDepFun (shift n k a) (shift (n + 1) k b)
--- Phase 2: Top/Bot type expressions
-shift n k DBExprTop = DBExprTop
-shift n k DBExprBot = DBExprBot
-shift n k (DBExprPair a b) = DBExprPair (shift n k a) (shift n k b)
-shift n k DBZero = DBZero
-shift n k (DBSuc e) = DBSuc (shift n k e)
-shift n k (DBAdd e1 e2) = DBAdd (shift n k e1) (shift n k e2)
-shift n k (DBMul e1 e2) = DBMul (shift n k e1) (shift n k e2)
-shift n k DBTrue = DBTrue
-shift n k DBFalse = DBFalse
-shift n k (DBNot e) = DBNot (shift n k e)
-shift n k (DBAnd e1 e2) = DBAnd (shift n k e1) (shift n k e2)
-shift n k (DBOr e1 e2) = DBOr (shift n k e1) (shift n k e2)
-shift n k (DBEq e1 e2) = DBEq (shift n k e1) (shift n k e2)
-shift n k (DBLt e1 e2) = DBLt (shift n k e1) (shift n k e2)
-shift n k (DBGt e1 e2) = DBGt (shift n k e1) (shift n k e2)
-shift n k (DBLeq e1 e2) = DBLeq (shift n k e1) (shift n k e2)
-shift n k (DBGeq e1 e2) = DBGeq (shift n k e1) (shift n k e2)
-shift n k (DBIf c t e) = DBIf (shift n k c) (shift n k t) (shift n k e)
-shift n k (DBLet e body) = DBLet (shift n k e) (shift (n + 1) k body)
-shift n k (DBApp f e) = DBApp (shift n k f) (shift n k e)
--- Phase 2: Top/Bot values and eliminators
-shift n k DBTt = DBTt
-shift n k DBMagic = DBMagic
--- Phase 2: Boolean eliminator
-shift n k (DBElimBool p t f b) = DBElimBool (shift n k p) (shift n k t) (shift n k f) (shift n k b)
--- Phase 2: Pair types
-shift n k (DBPair a b) = DBPair (shift n k a) (shift n k b)
-shift n k (DBFst p) = DBFst (shift n k p)
-shift n k (DBSnd p) = DBSnd (shift n k p)
--- Phase 3: Vector types
-shift n k (DBExprVec a len) = DBExprVec (shift n k a) (shift n k len)
-shift n k DBNil = DBNil
-shift n k (DBCons a as) = DBCons (shift n k a) (shift n k as)
-shift n k (DBHead v) = DBHead (shift n k v)
-shift n k (DBTail v) = DBTail (shift n k v)
-shift n k (DBAppend v1 v2) = DBAppend (shift n k v1) (shift n k v2)
-
 -- Shift function for types
 shiftType :: Int -> Int -> DBType -> DBType
 shiftType n k (DBTVar i)
@@ -219,7 +167,7 @@ shiftType n k DBTTop = DBTTop
 shiftType n k DBTBot = DBTBot
 shiftType n k (DBTPair a b) = DBTPair (shiftType n k a) (shiftType n k b)
 -- Phase 3: Vector types
-shiftType n k (DBTVec a len) = DBTVec (shiftType n k a) (shift n k len)
+shiftType n k (DBTVec a len) = DBTVec (shiftType n k a) (shiftLens n k len)
 
 -- Substitution: subst n u e
 -- Replace variable n with u, decrement indices > n
@@ -229,14 +177,14 @@ subst n u (DBVar i)
   | i > n = DBVar (i - 1)
   | otherwise = DBVar i
 subst n u (DBFunRef f) = DBFunRef f
-subst n u (DBLam e) = DBLam (subst (n + 1) (shift 0 1 u) e)
-subst n u (DBLamAnn t e) = DBLamAnn t (subst (n + 1) (shift 0 1 u) e) -- Type doesn't need substitution in this simple version
+subst n u (DBLam e) = DBLam (subst (n + 1) (shiftLens 0 1 u) e)
+subst n u (DBLamAnn t e) = DBLamAnn t (subst (n + 1) (shiftLens 0 1 u) e) -- Type doesn't need substitution in this simple version
 subst n u DBU = DBU
 -- Type expressions
 subst n u DBExprNat = DBExprNat
 subst n u DBExprBool = DBExprBool
 subst n u (DBExprFun a b) = DBExprFun (subst n u a) (subst n u b)
-subst n u (DBExprDepFun a b) = DBExprDepFun (subst n u a) (subst (n + 1) (shift 0 1 u) b)
+subst n u (DBExprDepFun a b) = DBExprDepFun (subst n u a) (subst (n + 1) (shiftLens 0 1 u) b)
 -- Phase 2: Top/Bot type expressions
 subst n u DBExprTop = DBExprTop
 subst n u DBExprBot = DBExprBot
@@ -256,7 +204,7 @@ subst n u (DBGt e1 e2) = DBGt (subst n u e1) (subst n u e2)
 subst n u (DBLeq e1 e2) = DBLeq (subst n u e1) (subst n u e2)
 subst n u (DBGeq e1 e2) = DBGeq (subst n u e1) (subst n u e2)
 subst n u (DBIf c t e) = DBIf (subst n u c) (subst n u t) (subst n u e)
-subst n u (DBLet e body) = DBLet (subst n u e) (subst (n + 1) (shift 0 1 u) body)
+subst n u (DBLet e body) = DBLet (subst n u e) (subst (n + 1) (shiftLens 0 1 u) body)
 subst n u (DBApp f e) = DBApp (subst n u f) (subst n u e)
 -- Phase 2: Top/Bot values and eliminators
 subst n u DBTt = DBTt
@@ -274,3 +222,82 @@ subst n u (DBCons a as) = DBCons (subst n u a) (subst n u as)
 subst n u (DBHead v) = DBHead (subst n u v)
 subst n u (DBTail v) = DBTail (subst n u v)
 subst n u (DBAppend v1 v2) = DBAppend (subst n u v1) (subst n u v2)
+
+-- Lens-based approach for accessing De Bruijn variables
+-- Traversal that focuses on all DBVar indices in an expression
+dbVars :: Traversal' DBExp Int
+dbVars f (DBVar i) = DBVar <$> f i
+dbVars f (DBLam e) = DBLam <$> dbVars f e
+dbVars f (DBLamAnn t e) = DBLamAnn t <$> dbVars f e
+dbVars f (DBExprFun a b) = DBExprFun <$> dbVars f a <*> dbVars f b
+dbVars f (DBExprDepFun a b) = DBExprDepFun <$> dbVars f a <*> dbVars f b
+dbVars f (DBExprPair a b) = DBExprPair <$> dbVars f a <*> dbVars f b
+dbVars f (DBSuc e) = DBSuc <$> dbVars f e
+dbVars f (DBAdd e1 e2) = DBAdd <$> dbVars f e1 <*> dbVars f e2
+dbVars f (DBMul e1 e2) = DBMul <$> dbVars f e1 <*> dbVars f e2
+dbVars f (DBNot e) = DBNot <$> dbVars f e
+dbVars f (DBAnd e1 e2) = DBAnd <$> dbVars f e1 <*> dbVars f e2
+dbVars f (DBOr e1 e2) = DBOr <$> dbVars f e1 <*> dbVars f e2
+dbVars f (DBEq e1 e2) = DBEq <$> dbVars f e1 <*> dbVars f e2
+dbVars f (DBLt e1 e2) = DBLt <$> dbVars f e1 <*> dbVars f e2
+dbVars f (DBGt e1 e2) = DBGt <$> dbVars f e1 <*> dbVars f e2
+dbVars f (DBLeq e1 e2) = DBLeq <$> dbVars f e1 <*> dbVars f e2
+dbVars f (DBGeq e1 e2) = DBGeq <$> dbVars f e1 <*> dbVars f e2
+dbVars f (DBIf c t e) = DBIf <$> dbVars f c <*> dbVars f t <*> dbVars f e
+dbVars f (DBLet e body) = DBLet <$> dbVars f e <*> dbVars f body
+dbVars f (DBApp fun arg) = DBApp <$> dbVars f fun <*> dbVars f arg
+dbVars f (DBElimBool p t fun b) = DBElimBool <$> dbVars f p <*> dbVars f t <*> dbVars f fun <*> dbVars f b
+dbVars f (DBPair a b) = DBPair <$> dbVars f a <*> dbVars f b
+dbVars f (DBFst p) = DBFst <$> dbVars f p
+dbVars f (DBSnd p) = DBSnd <$> dbVars f p
+dbVars f (DBExprVec a len) = DBExprVec <$> dbVars f a <*> dbVars f len
+dbVars f (DBCons a as) = DBCons <$> dbVars f a <*> dbVars f as
+dbVars f (DBHead v) = DBHead <$> dbVars f v
+dbVars f (DBTail v) = DBTail <$> dbVars f v
+dbVars f (DBAppend v1 v2) = DBAppend <$> dbVars f v1 <*> dbVars f v2
+-- Base cases that don't contain variables
+dbVars _ e = pure e
+
+-- Lens-based shift function (respects De Bruijn scoping)
+shiftLens :: Int -> Int -> DBExp -> DBExp
+shiftLens n k (DBVar i)
+  | i >= n = DBVar (i + k)
+  | otherwise = DBVar i
+shiftLens n k (DBLam e) = DBLam (shiftLens (n + 1) k e)
+shiftLens n k (DBLamAnn t e) = DBLamAnn (shiftType n k t) (shiftLens (n + 1) k e)
+shiftLens n k (DBLet e body) = DBLet (shiftLens n k e) (shiftLens (n + 1) k body)
+shiftLens n k e = e & dbVars %~ (\i -> if i >= n then i + k else i)
+
+-- Lenses for accessing components of composite expressions
+lamAnnType :: Lens' DBExp DBType
+lamAnnType = lens get set
+  where
+    get (DBLamAnn t _) = t
+    get _ = error "Not a DBLamAnn"
+    set (DBLamAnn _ e) t = DBLamAnn t e
+    set _ _ = error "Not a DBLamAnn"
+
+lamAnnBody :: Lens' DBExp DBExp
+lamAnnBody = lens get set
+  where
+    get (DBLamAnn _ e) = e
+    get _ = error "Not a DBLamAnn"
+    set (DBLamAnn t _) e = DBLamAnn t e
+    set _ _ = error "Not a DBLamAnn"
+
+-- Traversal for type variables in DBType
+typeVars :: Traversal' DBType Int
+typeVars f (DBTVar i) = DBTVar <$> f i
+typeVars f (DBTFun a b) = DBTFun <$> typeVars f a <*> typeVars f b
+typeVars f (DBTDepFun a b) = DBTDepFun <$> typeVars f a <*> typeVars f b
+typeVars f (DBTPair a b) = DBTPair <$> typeVars f a <*> typeVars f b
+typeVars f (DBTVec a len) = DBTVec <$> typeVars f a <*> pure len
+typeVars _ t = pure t
+
+-- Helper function using lenses: extract all variable indices from an expression
+getAllVarIndices :: DBExp -> [Int]
+getAllVarIndices = toListOf dbVars
+
+-- Helper function using lenses: count number of variables
+countVars :: DBExp -> Int
+countVars = lengthOf dbVars

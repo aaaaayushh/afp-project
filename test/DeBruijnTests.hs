@@ -41,7 +41,7 @@ dbCheckTest desc dbExp expectedType =
 shiftTest :: String -> Int -> Int -> DBExp -> DBExp -> Spec
 shiftTest desc n k input expected =
   it desc $ do
-    shift n k input `shouldBe` expected
+    shiftLens n k input `shouldBe` expected
 
 -- Test substitution operation
 substTest :: String -> Int -> DBExp -> DBExp -> DBExp -> Spec

@@ -5,10 +5,10 @@ It contains a grammar definition for a small language, its type checker, and its
 
 The repository consists of the following components:
 
-* `app`: the home directory for the executable (contains only the `Main.hs` function)
-* `grammar`: the grammar library, automatically generated using [BNFC](https://bnfc.readthedocs.io/) from the `Lang.cf` file
-* **`src`:** contains source code for the `lang` library
-* `test`: the test suite
+- `app`: the home directory for the executable (contains only the `Main.hs` function)
+- `grammar`: the grammar library, automatically generated using [BNFC](https://bnfc.readthedocs.io/) from the `Lang.cf` file
+- **`src`:** contains source code for the `lang` library
+- `test`: the test suite
 
 ## Building, Running, and Testing
 
@@ -23,7 +23,7 @@ cabal update
 cabal install alex happy BNFC --overwrite-policy=always
 ```
 
-*TIP:* Install the [LBNF](https://marketplace.visualstudio.com/items?itemName=agurodriguez.vscode-lbnf) extension for VS Code for syntax highlighting on `.cf` files.
+_TIP:_ Install the [LBNF](https://marketplace.visualstudio.com/items?itemName=agurodriguez.vscode-lbnf) extension for VS Code for syntax highlighting on `.cf` files.
 
 ### Building
 
@@ -94,31 +94,44 @@ val z = x + y < 10;
 orFalse z
 ```
 
+## Lens-Based DeBruijn Implementation
+
+This project includes a sophisticated implementation of De Bruijn indexed expressions using **Control.Lens** optics (lenses and traversals). The `src/DeBruijn.hs` module demonstrates how lenses can dramatically simplify complex tree manipulations.
+
+### Key Features:
+
+- **`dbVars` Traversal**: Focuses on all variable indices in expressions
+- **`shiftLens` Function**: Implements index shifting with proper scoping
+- **Component Lenses**: Safe access to expression parts
+- **46-line function reduced to 5 lines** through lens composition
+
+For a detailed explanation of the implementation, see [`docs/DeBruijn-Lens-Documentation.md`](docs/DeBruijn-Lens-Documentation.md).
+
 The language supports the following statements:
 
-* function declaration (`fun plus_two (x : int) = x + 2;`), and
-* variable binding (`val x = 7;`).
+- function declaration (`fun plus_two (x : int) = x + 2;`), and
+- variable binding (`val x = 7;`).
 
 as well as the following expressions:
 
-* integers (`1`, `-23796`) and integer operations:
-  * addition (`+`),
-  * subtraction (`-`),
-  * multiplication (`*`), and
-  * division (`/`),
-* booleans (`True` and `False`) and boolean operations:
-  * "and" (`&&`),
-  * "or" (`||`), and
-  * "not" (`!`),
-* comparison operations:
-  * "equal to" (`==`),
-  * "less than" (`<`) and "less than or equal to" (`<=`), and
-  * "greater than" (`>`) and "greater than or equal to" (`>=`),
-* branching (`if ... then ... else ...`),
-* variables (`x`, `y`),
-* let bindings (`let x = ... in ...`),
-* function application (`f x`), and
-* brackets (`(...)`).
+- integers (`1`, `-23796`) and integer operations:
+  - addition (`+`),
+  - subtraction (`-`),
+  - multiplication (`*`), and
+  - division (`/`),
+- booleans (`True` and `False`) and boolean operations:
+  - "and" (`&&`),
+  - "or" (`||`), and
+  - "not" (`!`),
+- comparison operations:
+  - "equal to" (`==`),
+  - "less than" (`<`) and "less than or equal to" (`<=`), and
+  - "greater than" (`>`) and "greater than or equal to" (`>=`),
+- branching (`if ... then ... else ...`),
+- variables (`x`, `y`),
+- let bindings (`let x = ... in ...`),
+- function application (`f x`), and
+- brackets (`(...)`).
 
 Orders of operation follow these priority levels (`0` being lowest and `8` being highest):
 
@@ -145,4 +158,3 @@ Orders of operation follow these priority levels (`0` being lowest and `8` being
 ```
 
 `*`: types must have the same priority level than the highest one in which they are used
-
