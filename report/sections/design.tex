@@ -1,0 +1,266 @@
+\section{Design Decisions}
+
+\section{Phase 0: Foundational Language Features}
+
+Phase 0 of the implementation focused on establishing a robust foundation for the dependently typed language. This involved moving away from standard integer types to a more theoretically sound natural number system, implementing a nameless representation for variables to simplify scope management, introducing a powerful bidirectional type-checking algorithm, and adding first-class lambda expressions. These core features are essential for building the more advanced dependent type constructs in later phases.
+
+\subsection{Natural Numbers}
+
+The language's integer type was replaced with a Peano-style natural number system. This design choice provides several advantages in the context of a dependently typed language.
+
+\subsubsection{Implementation}
+Natural numbers are represented by the inductive data type `Nat`, defined in \texttt{src/Value.hs} as:
+\begin{verbatim}
+data Nat = Zero | Suc Nat
+\end{verbatim}
+This definition provides a constructor for zero (`Zero`) and a successor function (`Suc`) to represent all other natural numbers. This structure aligns perfectly with inductive proofs and definitions, which are central to dependent type theory. The abstract syntax tree reflects this with `DBZero` and `DBSuc` constructors in the `DBExp` data type.
+
+\subsubsection{Design Rationale}
+The primary motivation for using Peano numbers is to guarantee that all values of this type are non-negative, eliminating an entire class of errors related to negative numbers where they are not semantically meaningful (e.g., the length of a vector). Furthermore, this inductive structure allows for elegant and safe definitions of arithmetic operations like addition and multiplication via structural recursion.
+
+For instance, a simple expression for the number 2 is written as:
+\begin{verbatim}
+suc (suc zero)
+\end{verbatim}
+
+\subsection{De Bruijn Indices}
+
+To handle variable binding and substitution in a clean and robust manner, the interpreter uses De Bruijn indices instead of named variables in its internal representation.
+
+\subsubsection{Implementation}
+When the source code is parsed, a pre-processing step converts all named variables into a nameless representation. A variable is represented by an integer that indicates its binder's distance---the number of lambdas or other binders between the variable and where it was defined. This is represented by the `DBVar Int` constructor in the `DBExp` data type in \texttt{src/DeBruijn.hs}.
+
+The conversion is handled by the `toDB` function, which traverses the abstract syntax tree while maintaining a context (a list of variable names) to track bound variables. When an `EVar` is encountered, its name is looked up in the context, and its index in the list becomes its De Bruijn index.
+
+\subsubsection{Design Rationale}
+This approach completely avoids problems of variable name collision and shadowing. It simplifies the implementation of substitution (`subst`) and variable shifting (`shift`), which are critical for beta-reduction in lambda calculus. For example, when applying a function, the `subst` function replaces all occurrences of the bound variable (index 0) in the function body with the provided argument, without any risk of accidentally capturing a free variable. This makes the core logic of the evaluator simpler and less error-prone.
+
+An example of how a lambda expression is converted can be seen below. The expression:
+\begin{verbatim}
+\x -> \y -> x
+\end{verbatim}
+is converted internally to a representation equivalent to `DBLam (DBLam (DBVar 1))`. Here, `y` would be `DBVar 0` inside the inner lambda, and `x` is `DBVar 1` because it is one binder away.
+
+\subsection{Bidirectional Type Checking}
+
+A key feature of the type system is its use of bidirectional type checking, which splits the type checker into two distinct but collaborating modes: inference and checking.
+
+\subsubsection{Implementation}
+The type checker, located in \texttt{src/TypeCheck/DBExpr.hs}, exposes two main functions:
+\begin{itemize}
+    \item \texttt{infer :: DBExp -> TyEnv -> Result Type}: This function takes an expression and computes its type.
+    \item \texttt{check :: DBExp -> Type -> TyEnv -> Result ()}: This function takes an expression and a type, and verifies that the expression indeed has that type.
+\end{itemize}
+
+\subsubsection{Design Rationale}
+This design is particularly crucial for handling expressions whose types cannot be determined locally. The canonical example is a lambda expression without a type annotation on its parameter.
+
+Consider this lambda expression:
+\begin{verbatim}
+\x -> x
+\end{verbatim}
+The type of `x` is unknown, so the type of the whole expression cannot be inferred from syntax alone. The `infer` function will correctly report an error in this case.
+
+However, if we provide a type context, we can \textit{check} if the expression matches. The bidirectional system shines here. For example, if we check this lambda against the type `nat -> nat`, the `check` function proceeds by adding `x : nat` to the environment and then checking if the body, `x`, has the type `nat`. This succeeds.
+
+This approach provides the best of both worlds: the convenience of type inference for most expressions, and the precision of type checking for ambiguous cases like lambdas. It also leads to clearer error messages.
+
+The following example from \texttt{examples/bidirectional\_demo.afp} demonstrates this. The function `apply` requires a function of type `nat -> nat`.
+\begin{verbatim}
+let apply : (nat -> nat) -> nat = \f -> f (suc zero);
+apply (\x -> x)
+\end{verbatim}
+Here, `\x -> x` can be successfully checked against `nat -> nat` when `apply` is called, even though its type cannot be inferred in isolation.
+
+\subsection{Lambda Expressions and Closures}
+
+The language supports first-class lambda expressions (anonymous functions), which are a cornerstone of functional programming.
+
+\subsubsection{Implementation}
+Lambda expressions are defined in the grammar (\texttt{grammar/Lang.cf}) and represented by the `DBLam` constructor in the `DBExp` type. At runtime, when a lambda expression is evaluated, it becomes a `VLam` value, which contains a `Closure`. A closure, defined in \texttt{src/Value.hs}, captures the function's body (`DBFun DBExp`) along with its lexical environment, allowing it to correctly access variables from its definition scope even when executed elsewhere.
+
+Function application is handled in the interpreter by:
+\begin{enumerate}
+    \item Evaluating the function expression to a `VLam` value.
+    \item Evaluating the argument expression to a value.
+    \item Applying the closure by substituting the argument value for the parameter (De Bruijn index 0) within the closure's body.
+    \item Evaluating the resulting expression.
+\end{enumerate}
+
+\subsubsection{Design Rationale}
+Treating lambdas as first-class citizens means they can be passed as arguments to other functions, returned as results, and stored in data structures. This enables higher-order functions, a powerful abstraction mechanism.
+
+A simple example of defining and using a lambda is shown in \texttt{examples/lambda\_basics.afp}:
+\begin{verbatim}
+let double : nat -> nat = \x -> x + x;
+double (suc (suc zero))
+\end{verbatim}
+A higher-order function example is shown in \texttt{examples/higher\_order\_simple.afp}, where a function is passed as an argument:
+\begin{verbatim}
+let apply : (nat -> nat) -> nat = \f -> f (suc zero);
+apply (\x -> x + (suc zero))
+\end{verbatim}
+This implementation of closures and function application ensures that variable scoping works as expected, forming a solid foundation for the more complex features of the language.
+
+\section{Phase 1: Dependent Functions and a Universe}
+
+Phase 1 introduced the core features of a dependently typed language: dependent function types and a type universe. These features allow types to depend on values, significantly increasing the expressiveness and precision of the type system.
+
+\subsection{Dependent Function Types}
+
+The language was extended to support dependent function types, written as `(x : A) -> B`, where `B` is a type that may refer to the value `x` of type `A`.
+
+\subsubsection{Implementation}
+This feature is enabled by several interconnected components:
+\begin{enumerate}
+    \item \textbf{Syntax}: The grammar in \texttt{grammar/Lang.cf} was updated with syntax for dependent function types. Internally, these are represented by the `DBExprDepFun` and `DBTDepFun` constructors.
+    \item \textbf{Evaluation during Type Checking}: The most critical change was enabling the type checker to evaluate expressions. When checking a dependent function application, the type checker must compute the return type `B` by substituting the argument's value for `x`. This is achieved by having the `infer` and `check` functions call the `interp` function to reduce type-level computations to values.
+    \item \textbf{Types as First-Class Values}: To support this evaluation, types themselves needed to become runtime values. The `Value` data type was extended with the `VType Type` constructor. This allows the interpreter to evaluate a type expression (like `nat` or `(x : A) -> B`) into a specific value that wraps the type, rather than a generic "universe" tag. This is the cornerstone of the dependent type implementation.
+\end{enumerate}
+
+\subsubsection{Design Rationale}
+Dependent functions allow for writing much more precise and powerful function signatures. Polymorphism, for instance, can be expressed directly. Instead of being a special language feature, it is a natural consequence of having dependent types.
+
+A classic example is the polymorphic identity function, which can be seen in the test cases in \texttt{test/Phase1Tests.hs}:
+\begin{verbatim}
+\(a : U) -> \(x : nat) -> x
+\end{verbatim}
+This lambda expression demonstrates the key features of dependent function types. The function first takes a type `a` of universe `U` as an argument, then takes a value `x` of type `nat`, and returns that same value. While this specific example uses `nat` concretely, the pattern shows how functions can abstract over types.
+
+A more general polymorphic identity would have the type `(A : U) -> A -> A`, where the return type `A` depends on the value of the first argument. The bidirectional type checking system enables such dependent types by allowing the type checker to evaluate type-level expressions during checking, making types genuinely dependent on runtime values.
+
+\subsection{The Universe Type (U)}
+
+To reason about types as values, the language includes a type universe, `U`.
+
+\subsubsection{Implementation}
+The universe `U` is a special type that contains other types.
+\begin{itemize}
+    \item Base types like `nat` and `bool` have type `U`. The `infer` function for `DBExprNat` and `DBExprBool` returns `DBTU`.
+    \item Function types, including simple (`A -> B`) and dependent (`(x : A) -> B`), also have type `U`, provided their component types are also in `U`.
+    \item The universe `U` itself has type `U`. This is known as "type-in-type". This is implemented in the `infer` function, where the rule for `DBU` returns `DBTU`.
+\end{itemize}
+
+\subsubsection{Design Rationale}
+The universe `U` allows functions to abstract over types (as seen in the polymorphic identity function). It makes types first-class citizens, which can be passed to and returned from functions.
+
+The decision to implement a single universe where `U : U` simplifies the system. While this can lead to logical inconsistencies (like Girard's Paradox), as noted in the project goals, these are highly unlikely to arise in practice for the programs written in this language. A full hierarchy of universes (`U0 : U1`, `U1 : U2`, etc.) would resolve this, but was considered an optional extension and not implemented to keep the core system simpler.
+
+The universe allows us to define functions that operate on types, which is fundamental for dependent typing.
+
+\section{Phase 2: Built-in Types and Dependent Elimination}
+
+Phase 2 enriched the language with several foundational types and, most importantly, introduced the principle of dependent elimination with a boolean eliminator. This phase marked a significant step towards a practically useful language by providing common data structures and a powerful pattern for types to depend on runtime values.
+
+\subsection{Unit, Empty, and Pair Types}
+
+To improve usability, the language was extended with a set of standard, non-dependent built-in types: the unit type (`Top`), the empty type (`Bot`), and pair types (`[A, B]`).
+
+\subsubsection{Implementation}
+These features were added with new syntax, AST nodes, and runtime values:
+\begin{itemize}
+    \item \textbf{Unit Type}: `Top` is the type with a single value, `tt`. It is represented by `DBTTop`/`DBTt` in the AST and `VTop` as a value. It serves as a placeholder in contexts where a value is needed but carries no information.
+    \item \textbf{Empty Type}: `Bot` is the type with no values. It is uninhabited and represents falsehood or impossible states. A built-in function, `magic`, has the type `(P : Bot -> U) -> (x : Bot) -> P x`, which allows converting from `Bot` to any type, embodying the principle of *ex falso quodlibet*.
+    \item \textbf{Pair Types}: A product type `[A, B]` was introduced for creating pairs of values. Values are constructed as `(a, b)`. Projections `fst p` and `snd p` are provided to extract the first and second elements of a pair `p`. These are represented by `DBTPair`, `DBPair`, `DBFst`, and `DBSnd` in the AST and `VPair` at runtime.
+\end{itemize}
+The type checking and evaluation for these constructs are straightforward, as they do not involve dependencies on values.
+
+\subsubsection{Design Rationale}
+These types are fundamental building blocks in typed functional languages.
+\begin{itemize}
+    \item `Top` is essential for functions that are executed only for their side effects (if any were present) or for polymorphic functions that need to return a trivial value.
+    \item `Bot` is crucial for program verification and logic, allowing one to represent unreachable code paths or prove properties by demonstrating that an absurd state (a value of type `Bot`) would be reachable if the property were false.
+    \item Pairs are the most basic way to group multiple values together and are indispensable for writing functions that need to return more than one result. For example, a `swap` function is easily written:
+\end{itemize}
+\begin{verbatim}
+let swap : (A : U) -> (B : U) -> [A, B] -> [B, A] =
+  \A -> \B -> \p -> (snd p, fst p);
+\end{verbatim}
+
+\subsection{Dependently Typed Boolean Eliminator}
+
+The cornerstone of Phase 2 is the introduction of `elimBool`, a dependently typed eliminator for booleans. This function goes far beyond a simple `if-then-else`, as it allows the type of the result to depend on the boolean value being tested.
+
+\subsubsection{Implementation}
+The `elimBool` function has the following type signature:
+\begin{verbatim}
+(P : bool -> U) -> P true -> P false -> (b : bool) -> P b
+\end{verbatim}
+The first argument, `P`, is called the "motive." It is a function that maps each boolean value to a type. The type checker then uses this motive to determine the expected type for the `true` and `false` branches.
+
+The implementation required a fundamental enhancement to the type checker, blurring the lines between type checking and evaluation:
+\begin{enumerate}
+    \item The `infer` rule for `elimBool` calls the interpreter (`interp`) to evaluate the motive `P` applied to the values `true` and `false`.
+    \item The type of the `true`-branch is determined by computing `P true` at compile time. The type checker then uses this computed type to `check` the `true`-branch expression.
+    \item Similarly, the type of the `false`-branch is computed as `P false` and used to `check` the `false`-branch expression.
+    \item The final type of the entire `elimBool` expression is `P b`, where `b` is the boolean value being inspected. This type is again computed by calling the interpreter from within the type checker.
+\end{enumerate}
+
+\subsubsection{Design Rationale}
+This design makes the type system "active." It doesn't just check static shapes; it computes, evaluates, and uses the results of those computations to inform its typing decisions. This is the essence of dependent types.
+
+The power of `elimBool` is demonstrated by the `natOrBool` example. This function returns a `nat` if its input is `true` and a `bool` if its input is `false`. This would be impossible in a traditional simply-typed language where both branches of a conditional must have the same type.
+\begin{verbatim}
+-- The type of natOrBool depends on the value of 'b'
+let natOrBool : (b : bool) -> U =
+    \b -> elimBool (\(b:bool) -> U) nat bool b;
+
+-- The type checker evaluates (natOrBool true) to 'nat'
+-- and accepts this definition.
+let testNat : natOrBool true = suc zero;
+
+-- The type checker evaluates (natOrBool false) to 'bool'
+-- and accepts this definition.
+let testBool : natOrBool false = true;
+\end{verbatim}
+This demonstrates how `elimBool` enables writing code with a level of precision and safety that is unattainable in simpler type systems, laying the groundwork for more advanced indexed data types.
+
+\section{Phase 3: Indexed Data Types - Vectors}
+
+Phase 3 introduced indexed data types to the language, with a focus on implementing length-indexed vectors. This feature leverages the dependent type system to embed static properties—in this case, the size of a list—directly into the type, enabling a new level of compile-time safety.
+
+\subsection{Length-Indexed Vectors}
+
+Vectors are lists whose lengths are tracked by the type system. The type `Vector A n` represents a vector containing elements of type `A` with a length of exactly `n`.
+
+\subsubsection{Implementation}
+
+\begin{itemize}
+    \item \textbf{Syntax and Representation}: The grammar was extended to support the `Vector A n` type syntax, the empty vector literal `[]`, the cons operator `a :: as`, and the functions `head`, `tail`, and `append`. Internally, the type is represented as `DBTVec DBType DBExp`, capturing both the element type and the length expression in a form that respects De Bruijn indexing. At runtime, a vector is simply a `VVec [Value]`, as the length information is purely a static, compile-time construct used for verification.
+
+    \item \textbf{Type-Safe Operations}: The type checker enforces length safety for all vector operations.
+    \begin{itemize}
+        \item \textbf{Construction}: The empty vector `[]` is given the type `Vector A zero`, where the element type `A` must be known from a type annotation. The cons operator `a :: as` requires `a` to have type `A` and `as` to have type `Vector A n`, and it produces a result of type `Vector A (suc n)`.
+        \item \textbf{Projections}: `head` and `tail` are the primary beneficiaries of dependent types. They are only permitted on vectors of a statically known non-zero length. The type checker enforces that their argument must have type `Vector A (suc n)` for some `n`. This check completely eliminates runtime errors from taking the head or tail of an empty vector in well-typed programs.
+        \item \textbf{Append}: The `append` function concatenates a `Vector A m` and a `Vector A n` to produce a `Vector A (m + n)`, preserving the length information at the type level.
+    \end{itemize}
+
+    \item \textbf{Smart Inference}: To improve ergonomics, a degree of smart inference was implemented. In an expression like `e :: []`, the type checker can infer the element type of the resulting vector from the type of `e`, removing the need for an explicit annotation on `[]` in this common case.
+
+    \item \textbf{Interpreter}: The runtime evaluation of vector operations maps directly to efficient Haskell list operations (`:`, `head`, `tail`, `++`). The type checker's prior verification guarantees that these operations will not fail at runtime (e.g., `head` will never be called on an empty list).
+\end{itemize}
+
+\subsubsection{Design Rationale}
+
+The primary goal of including vectors is to prevent common off-by-one and empty-list errors at compile time. By encoding the length in the type, the compiler can statically verify that operations are safe.
+
+For example, constructing a vector is straightforward, as seen in \texttt{examples/vector\_basics.afp}:
+\begin{verbatim}
+let v : Vector nat (suc (suc zero)) = (suc zero) :: zero :: [];
+\end{verbatim}
+The type annotation clearly states this vector must have two elements of type `nat`. The real power comes from functions that operate on vectors. The type of `head` is essentially:
+\begin{verbatim}
+(A : U) -> (n : nat) -> Vector A (suc n) -> A
+\end{verbatim}
+This signature forces any argument to `head` to be a vector whose length is the successor of some natural number `n`—i.e., a non-empty vector. Therefore, a program like this is accepted:
+\begin{verbatim}
+let v : Vector nat (suc zero) = zero :: [];
+let h : nat = head v;
+\end{verbatim}
+While a program like this is correctly rejected at compile time, preventing a runtime crash:
+\begin{verbatim}
+let v : Vector nat zero = [];
+let h : nat = head v; -- Type Error! Expected Vector A (suc n),
+                     -- but got Vector nat zero.
+\end{verbatim}
+This design demonstrates the core philosophy of dependent types: moving program properties from runtime tests to static, compile-time proofs, resulting in more robust and reliable software.

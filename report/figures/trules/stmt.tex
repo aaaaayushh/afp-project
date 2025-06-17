@@ -1,0 +1,47 @@
+\begin{figure}
+    \small
+    % Statements -----------------------------------------
+
+    % Let statement with inference
+    \begin{prooftree}
+        \AxiomC{$\Gamma,\Phi \vdash e \Uparrow \tau$}
+
+        \RightLabel{[\textsc{S-Let}]}
+
+        \UnaryInfC{$\Gamma,\Phi \quad\vdash\quad \texttt{let}\ x\ \texttt{=}\ e \quad\triangleright\quad \Gamma[x \mapsto \tau],\Phi$}
+    \end{prooftree}
+
+    % Let statement with type annotation
+    \begin{prooftree}
+        \AxiomC{$\Gamma,\Phi \vdash \tau \Downarrow U$}
+        \AxiomC{$\Gamma,\Phi \vdash e \Downarrow \tau$}
+
+        \RightLabel{[\textsc{S-Let-Ann}]}
+
+        \BinaryInfC{$\Gamma,\Phi \quad\vdash\quad \texttt{let}\ x\ \texttt{:}\ \tau\ \texttt{=}\ e \quad\triangleright\quad \Gamma[x \mapsto \tau],\Phi$}
+    \end{prooftree}
+
+    % Simple function definition
+    \begin{prooftree}
+        \AxiomC{$\Gamma,\Phi \vdash \sigma \Downarrow U$}
+        \AxiomC{$\Gamma[\sigma],\Phi \vdash e \Uparrow \tau$}
+
+        \RightLabel{[\textsc{S-Fun}]}
+
+        \BinaryInfC{$\Gamma,\Phi \quad\vdash\quad \texttt{fun}\ f\ \texttt{(}\ x\ \texttt{:}\ \sigma\ \texttt{) =}\ e \quad\triangleright\quad \Gamma,\Phi[f \mapsto (\sigma \to \tau)]$}
+    \end{prooftree}
+
+    % Dependent function definition
+    \begin{prooftree}
+        \AxiomC{$\Gamma,\Phi \vdash A \Downarrow U$}
+        \AxiomC{$\Gamma[A],\Phi \vdash e \Uparrow B$}
+        \AxiomC{$\Gamma[A],\Phi \vdash B \Downarrow U$}
+
+        \RightLabel{[\textsc{S-DepFun}]}
+
+        \TrinaryInfC{$\Gamma,\Phi \quad\vdash\quad \texttt{fun}\ f\ \texttt{(}\ x\ \texttt{:}\ A\ \texttt{) :}\ B\ \texttt{=}\ e \quad\triangleright\quad \Gamma,\Phi[f \mapsto ((x : A) \to B)]$}
+    \end{prooftree}
+
+\caption{Typing rules for statements}
+\label{fig:tr-stmt}
+\end{figure}

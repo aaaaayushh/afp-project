@@ -7,7 +7,7 @@ import Lang.Abs (Exp (..), Ident (..), Type (..))
 import Value (Closure (..), Nat (..), Value (..))
 import Value qualified
 
--- Helper functions for natural number arithmetic (same as before)
+-- Helper functions for natural number arithmetic
 addNat :: Nat -> Nat -> Nat
 addNat Zero n = n
 addNat (Suc m) n = Suc (addNat m n)
@@ -16,7 +16,7 @@ mulNat :: Nat -> Nat -> Nat
 mulNat Zero _ = Zero
 mulNat (Suc m) n = addNat n (mulNat m n)
 
--- Helper functions for natural number comparisons (same as before)
+-- Helper functions for natural number comparisons
 ltNat :: Nat -> Nat -> Bool
 ltNat Zero (Suc _) = True
 ltNat (Suc m) (Suc n) = ltNat m n
@@ -56,7 +56,7 @@ logic (e1, e2) env f = do
     (VBool b1, VBool b2) -> return $ VBool (f b1 b2)
     _ -> throw "Boolean operations can only be performed on booleans"
 
--- DE BRUIJN EXPRESSION INTERPRETER --------------------------------------------------
+-- DE BRUIJN EXPRESSION INTERPRETER
 
 interp :: DBExp -> (DBEnv Value, FunEnv Closure) -> Result Value
 -- Variables (De Bruijn indices)

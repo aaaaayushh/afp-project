@@ -12,6 +12,7 @@ import Lang.Par
     pProgram,
   )
 
+-- keeping this in for the tests
 type Result a = Either String a
 
 throw :: String -> Result a

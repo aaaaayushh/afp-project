@@ -16,6 +16,20 @@ valueToType (V.VType t) = return t
 valueToType V.VU = return TU -- Universe is a type
 valueToType v = throw $ "Expected a type, but got value: " ++ show v
 
+-- Helper to convert type environment to value environment for evaluation
+-- This is needed when we need to evaluate expressions during type checking
+typeEnvToValueEnv :: DBEnv Type -> DBEnv V.Value
+typeEnvToValueEnv = map typeToValue
+  where
+    typeToValue :: Type -> V.Value
+    typeToValue t = V.VType t -- Convert types to type values
+
+-- Helper to safely try evaluation and return Nothing if it fails
+tryEvaluate :: DBExp -> (DBEnv V.Value, FunEnv V.Closure) -> Maybe V.Value
+tryEvaluate expr env = case interp expr env of
+  Right val -> Just val
+  Left _ -> Nothing
+
 -- Convert DBType to Type for compatibility
 dbTypeToType :: DBType -> Type
 dbTypeToType DBTNat = TNat
@@ -179,21 +193,47 @@ infer (DBElimBool p t f b) env@(types, funs) = do
   -- Check b : bool
   check b TBool env
 
+  -- Convert type environment to value environment for evaluation
+  let valueEnv = (typeEnvToValueEnv types, emptyFun)
+
   -- Evaluate P(true) to get the type for the 'then' branch
-  true_branch_val <- interp (DBApp p DBTrue) (emptyDB, emptyFun)
+  true_branch_val <- interp (DBApp p DBTrue) valueEnv
   true_branch_type <- valueToType true_branch_val
   check t true_branch_type env
 
   -- Evaluate P(false) to get the type for the 'else' branch
-  false_branch_val <- interp (DBApp p DBFalse) (emptyDB, emptyFun)
+  false_branch_val <- interp (DBApp p DBFalse) valueEnv
   false_branch_type <- valueToType false_branch_val
   check f false_branch_type env
 
   -- The result type is P(b)
-  -- We can't know 'b' at compile time in general, but if it's a constant we can.
-  -- For now, let's try to evaluate it.
-  res_type_val <- interp (DBApp p b) (emptyDB, emptyFun)
-  valueToType res_type_val
+  -- Try to evaluate P(b). If b is concrete (True/False), this will work.
+  -- If b is a variable, we'll handle that case with a heuristic.
+  case tryEvaluate (DBApp p b) valueEnv of
+    Just res_type_val -> valueToType res_type_val
+    Nothing -> do
+      -- If we can't evaluate P(b) concretely, we need to handle the dependent type
+      case b of
+        -- If b is a concrete boolean, we shouldn't reach here, but handle it anyway
+        DBTrue -> do
+          val <- interp (DBApp p DBTrue) valueEnv
+          valueToType val
+        DBFalse -> do
+          val <- interp (DBApp p DBFalse) valueEnv
+          valueToType val
+        -- If b is a variable or complex expression, use a heuristic
+        _ -> do
+          -- Try to infer the type by checking if both branches have the same type
+          if true_branch_type == false_branch_type
+            then return true_branch_type -- Both branches same type, so result is that type
+            else
+              throw $
+                "Cannot determine result type of elimBool with variable boolean argument. "
+                  ++ "The predicate returns different types for True ("
+                  ++ show true_branch_type
+                  ++ ") and False ("
+                  ++ show false_branch_type
+                  ++ "), so the result type depends on the boolean value."
 
 -- Phase 2: Pair types
 infer (DBPair a b) env = do
@@ -318,9 +358,10 @@ check (DBExprVec a n) TU env = do
   check n TNat env
 
 -- Phase 3: Empty vector can be checked against any vector type with length zero
-check DBNil (TVec _elemType lengthExp) env = do
+check DBNil (TVec _elemType lengthExp) env@(types, funs) = do
   -- Check that the length expression evaluates to zero
-  lengthVal <- interp (toDB [] lengthExp) (emptyDB, emptyFun)
+  let valueEnv = (typeEnvToValueEnv types, emptyFun)
+  lengthVal <- interp (toDB [] lengthExp) valueEnv
   case lengthVal of
     V.VNat V.Zero -> return () -- Empty vector has correct length zero
     V.VNat (V.Suc _) -> throw "Cannot assign empty vector to non-zero length vector type"

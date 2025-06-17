@@ -1,0 +1,415 @@
+\begin{figure}
+    \small
+
+    % Primitives -----------------------------------------
+
+    \begin{multicols}{2}
+        % Natural numbers instead of integers
+        \begin{prooftree}
+            \AxiomC{}
+
+            \RightLabel{[\textsc{E-Zero}]}
+
+            \UnaryInfC{$\Gamma,\Phi \vdash zero \Uparrow nat$}
+        \end{prooftree}
+
+        \columnbreak
+
+        % ETrue.  Exp3  ::= "True";
+        % EFalse. Exp3  ::= "False";
+        \begin{prooftree}
+            \AxiomC{$b \in \{\texttt{true}, \texttt{false}\}$}
+
+            \RightLabel{[\textsc{E-Bool}]}
+
+            \UnaryInfC{$\Gamma,\Phi \vdash b \Uparrow bool$}
+        \end{prooftree}
+        
+    \end{multicols}
+
+    % Natural number operations --------------------------
+
+    \begin{prooftree}
+        \AxiomC{$\Gamma,\Phi \vdash e \Downarrow nat$}
+
+        \RightLabel{[\textsc{E-Suc}]}
+
+        \UnaryInfC{$\Gamma,\Phi \vdash suc\ e \Uparrow nat$}
+    \end{prooftree}
+
+    % EAdd. Exp5  ::= Exp5 "+" Exp6;
+    % EMul. Exp6  ::= Exp6 "*" Exp7;
+    \begin{prooftree}
+        \AxiomC{$\Gamma,\Phi \vdash e_1 \Downarrow nat$}
+        \AxiomC{$\Gamma,\Phi \vdash e_2 \Downarrow nat$}
+        \AxiomC{$\star \in \{\texttt{+}, \texttt{*}\}$}
+
+        \RightLabel{[\textsc{E-Arith}]}
+
+        \TrinaryInfC{$\Gamma,\Phi \vdash e_1 \star e_2 \Uparrow nat$}
+    \end{prooftree}
+
+    % Logic ----------------------------------------------
+
+    % ENot.   Exp3  ::= "!" Exp3;
+    \begin{prooftree}
+        \AxiomC{$\Gamma,\Phi \vdash e \Downarrow bool$}
+
+        \RightLabel{[\textsc{E-Not}]}
+
+        \UnaryInfC{$\Gamma,\Phi \vdash \texttt{not}\ e \Uparrow bool$}
+    \end{prooftree}
+
+    % EAnd.   Exp2  ::= Exp2 "&&" Exp3;
+    % EOr.    Exp1  ::= Exp1 "||" Exp2;
+    \begin{prooftree}
+        \AxiomC{$\Gamma,\Phi \vdash e_1 \Downarrow bool$}
+        \AxiomC{$\Gamma,\Phi \vdash e_2 \Downarrow bool$}
+        \AxiomC{$\star \in \{\texttt{\&\&}, \texttt{||}\}$}
+
+        \RightLabel{[\textsc{E-Logic}]}
+
+        \TrinaryInfC{$\Gamma,\Phi \vdash e_1 \star e_2 \Uparrow bool$}
+    \end{prooftree}
+
+    % Comparisons ----------------------------------------
+
+    % EEq.  Exp  ::= Exp "==" Exp1;
+    \begin{prooftree}
+        \AxiomC{$\Gamma,\Phi \vdash e_1 \Uparrow \tau$}
+        \AxiomC{$\Gamma,\Phi \vdash e_2 \Downarrow \tau$}
+        \AxiomC{$\tau \in \{nat, bool\}$}
+
+        \RightLabel{[\textsc{E-Eq}]}
+
+        \TrinaryInfC{$\Gamma,\Phi \vdash e_1\ \texttt{==}\ e_2 \Uparrow bool$}
+    \end{prooftree}
+
+    % ELt.  Exp4 ::= Exp4 "<" Exp5;
+    % EGt.  Exp4 ::= Exp4 ">" Exp5;
+    % ELeq. Exp4 ::= Exp4 "<=" Exp5;
+    % EGeq. Exp4 ::= Exp4 ">=" Exp5;
+    \begin{prooftree}
+        \AxiomC{$\Gamma,\Phi \vdash e_1 \Downarrow nat$}
+        \AxiomC{$\Gamma,\Phi \vdash e_2 \Downarrow nat$}
+        \AxiomC{$\star \in \{\texttt{<}, \texttt{>}, \texttt{<=}, \texttt{>=}\}$}
+
+        \RightLabel{[\textsc{E-Comp}]}
+
+        \TrinaryInfC{$\Gamma,\Phi \vdash e_1 \star e_2 \Uparrow bool$}
+    \end{prooftree}
+
+    % Control flow ---------------------------------------
+
+    % EIf.  Exp8 ::= "if" Exp "then" Exp "else" Exp;
+    \begin{prooftree}
+        \AxiomC{$\Gamma,\Phi \vdash cond \Downarrow bool$}
+        \AxiomC{$\Gamma,\Phi \vdash e_1 \Downarrow \tau$}
+        \AxiomC{$\Gamma,\Phi \vdash e_2 \Downarrow \tau$}
+
+        \RightLabel{[\textsc{E-If}]}
+
+        \TrinaryInfC{$\Gamma,\Phi \vdash \texttt{if}\ cond\ \texttt{then}\ e_1\ \texttt{else}\ e_2 \Uparrow \tau$}
+    \end{prooftree}
+
+    % Let bindings ---------------------------------------
+
+    % ELet. Exp8 ::= "let" Ident "=" Exp "in" Exp;
+    \begin{prooftree}
+        \AxiomC{$\Gamma,\Phi \vdash e \Uparrow \sigma$}
+        \AxiomC{$\Gamma[x \mapsto \sigma],\Phi \vdash body \Uparrow \tau$}
+
+        \RightLabel{[\textsc{E-Let}]}
+
+        \BinaryInfC{$\Gamma,\Phi \quad\vdash\quad \texttt{let}\ x\ \texttt{=}\ e\ \texttt{in}\ body \quad\Uparrow\quad \tau$}
+    \end{prooftree}
+
+    % Variables and Function References ------------------
+
+    % De Bruijn variable lookup
+    \begin{prooftree}
+        \AxiomC{$\Gamma[i] = \tau$}
+
+        \RightLabel{[\textsc{E-Var}]}
+
+        \UnaryInfC{$\Gamma,\Phi \vdash x_i \Uparrow \tau$}
+    \end{prooftree}
+
+    % Function reference lookup
+    \begin{prooftree}
+        \AxiomC{$(f : \tau) \in \Phi$}
+
+        \RightLabel{[\textsc{E-FunRef}]}
+
+        \UnaryInfC{$\Gamma,\Phi \vdash f \Uparrow \tau$}
+    \end{prooftree}
+
+    % Phase 0: Lambda Expressions and Application -------
+
+    % Lambda expressions (checking only)
+    \begin{prooftree}
+        \AxiomC{$\Gamma[\tau_1],\Phi \vdash e \Downarrow \tau_2$}
+
+        \RightLabel{[\textsc{E-Lam-Chk}]}
+
+        \UnaryInfC{$\Gamma,\Phi \vdash \lambda x.e \Downarrow \tau_1 \to \tau_2$}
+    \end{prooftree}
+
+    % Function application
+    \begin{prooftree}
+        \AxiomC{$\Gamma,\Phi \vdash f \Uparrow \sigma \to \tau$}
+        \AxiomC{$\Gamma,\Phi \vdash e \Downarrow \sigma$}
+
+        \RightLabel{[\textsc{E-App}]}
+
+        \BinaryInfC{$\Gamma,\Phi \vdash f\ e \Uparrow \tau$}
+    \end{prooftree}
+
+    % Phase 1: Universe and Dependent Types -------------
+
+    % Universe
+    \begin{prooftree}
+        \AxiomC{}
+
+        \RightLabel{[\textsc{E-Universe}]}
+
+        \UnaryInfC{$\Gamma,\Phi \vdash U \Uparrow U$}
+    \end{prooftree}
+
+    % Type expressions
+    \begin{multicols}{2}
+        \begin{prooftree}
+            \AxiomC{}
+
+            \RightLabel{[\textsc{E-Nat-Type}]}
+
+            \UnaryInfC{$\Gamma,\Phi \vdash nat \Uparrow U$}
+        \end{prooftree}
+
+        \columnbreak
+
+        \begin{prooftree}
+            \AxiomC{}
+
+            \RightLabel{[\textsc{E-Bool-Type}]}
+
+            \UnaryInfC{$\Gamma,\Phi \vdash bool \Uparrow U$}
+        \end{prooftree}
+    \end{multicols}
+
+    % Simple function type
+    \begin{prooftree}
+        \AxiomC{$\Gamma,\Phi \vdash A \Downarrow U$}
+        \AxiomC{$\Gamma,\Phi \vdash B \Downarrow U$}
+
+        \RightLabel{[\textsc{E-Fun-Type}]}
+
+        \BinaryInfC{$\Gamma,\Phi \vdash A \to B \Uparrow U$}
+    \end{prooftree}
+
+    % Dependent function type
+    \begin{prooftree}
+        \AxiomC{$\Gamma,\Phi \vdash A \Downarrow U$}
+        \AxiomC{$\Gamma[A],\Phi \vdash B \Downarrow U$}
+
+        \RightLabel{[\textsc{E-DepFun-Type}]}
+
+        \BinaryInfC{$\Gamma,\Phi \vdash (x : A) \to B \Uparrow U$}
+    \end{prooftree}
+
+    % Dependent lambda (checking only)
+    \begin{prooftree}
+        \AxiomC{$\Gamma[A],\Phi \vdash e \Downarrow B$}
+
+        \RightLabel{[\textsc{E-DepLam-Chk}]}
+
+        \UnaryInfC{$\Gamma,\Phi \vdash \lambda x.e \Downarrow (x : A) \to B$}
+    \end{prooftree}
+
+    % Dependent application (requires evaluation)
+    \begin{prooftree}
+        \AxiomC{$\Gamma,\Phi \vdash f \Uparrow (x : A) \to B$}
+        \AxiomC{$\Gamma,\Phi \vdash e \Downarrow A$}
+        \AxiomC{$\llbracket e \rrbracket = v$}
+
+        \RightLabel{[\textsc{E-DepApp}]}
+
+        \TrinaryInfC{$\Gamma,\Phi \vdash f\ e \Uparrow B[v/x]$}
+    \end{prooftree}
+
+    % Phase 2: Built-in Types ---------------------------
+
+    % Top type and unit value
+    \begin{multicols}{2}
+        \begin{prooftree}
+            \AxiomC{}
+
+            \RightLabel{[\textsc{E-Top-Type}]}
+
+            \UnaryInfC{$\Gamma,\Phi \vdash Top \Uparrow U$}
+        \end{prooftree}
+
+        \columnbreak
+
+        \begin{prooftree}
+            \AxiomC{}
+
+            \RightLabel{[\textsc{E-Unit}]}
+
+            \UnaryInfC{$\Gamma,\Phi \vdash tt \Uparrow Top$}
+        \end{prooftree}
+    \end{multicols}
+
+    % Bot type and magic
+    \begin{multicols}{2}
+        \begin{prooftree}
+            \AxiomC{}
+
+            \RightLabel{[\textsc{E-Bot-Type}]}
+
+            \UnaryInfC{$\Gamma,\Phi \vdash Bot \Uparrow U$}
+        \end{prooftree}
+
+        \columnbreak
+
+        \begin{prooftree}
+            \AxiomC{$\Gamma,\Phi \vdash e \Downarrow Bot$}
+
+            \RightLabel{[\textsc{E-Magic}]}
+
+            \UnaryInfC{$\Gamma,\Phi \vdash magic\ e \Uparrow \tau$}
+        \end{prooftree}
+    \end{multicols}
+
+    % Pair type and operations
+    \begin{prooftree}
+        \AxiomC{$\Gamma,\Phi \vdash A \Downarrow U$}
+        \AxiomC{$\Gamma,\Phi \vdash B \Downarrow U$}
+
+        \RightLabel{[\textsc{E-Pair-Type}]}
+
+        \BinaryInfC{$\Gamma,\Phi \vdash [A, B] \Uparrow U$}
+    \end{prooftree}
+
+    \begin{prooftree}
+        \AxiomC{$\Gamma,\Phi \vdash a \Downarrow A$}
+        \AxiomC{$\Gamma,\Phi \vdash b \Downarrow B$}
+
+        \RightLabel{[\textsc{E-Pair}]}
+
+        \BinaryInfC{$\Gamma,\Phi \vdash (a, b) \Uparrow [A, B]$}
+    \end{prooftree}
+
+    \begin{multicols}{2}
+        \begin{prooftree}
+            \AxiomC{$\Gamma,\Phi \vdash p \Uparrow [A, B]$}
+
+            \RightLabel{[\textsc{E-Fst}]}
+
+            \UnaryInfC{$\Gamma,\Phi \vdash fst\ p \Uparrow A$}
+        \end{prooftree}
+
+        \columnbreak
+
+        \begin{prooftree}
+            \AxiomC{$\Gamma,\Phi \vdash p \Uparrow [A, B]$}
+
+            \RightLabel{[\textsc{E-Snd}]}
+
+            \UnaryInfC{$\Gamma,\Phi \vdash snd\ p \Uparrow B$}
+        \end{prooftree}
+    \end{multicols}
+
+    % Boolean eliminator (dependent)
+    \begin{prooftree}
+        \AxiomC{$\Gamma,\Phi \vdash P \Downarrow bool \to U$}
+        \AxiomC{$\llbracket P\ true \rrbracket = \tau_{true}$}
+        \AxiomC{$\Gamma,\Phi \vdash t \Downarrow \tau_{true}$}
+        \AxiomC{$\llbracket P\ false \rrbracket = \tau_{false}$}
+        \AxiomC{$\Gamma,\Phi \vdash f \Downarrow \tau_{false}$}
+        \AxiomC{$\Gamma,\Phi \vdash b \Downarrow bool$}
+        \AxiomC{$\llbracket P\ b \rrbracket = \tau$}
+
+        \RightLabel{[\textsc{E-ElimBool}]}
+
+        \def\extraVskip{3pt}
+        \def\labelSpacing{3pt}
+        \QuaternaryInfC{$\Gamma,\Phi \vdash elimBool\ P\ t\ f\ b \Uparrow \tau$}
+    \end{prooftree}
+
+    % Phase 3: Vector Types ------------------------------
+
+    % Vector type formation
+    \begin{prooftree}
+        \AxiomC{$\Gamma,\Phi \vdash A \Downarrow U$}
+        \AxiomC{$\Gamma,\Phi \vdash n \Downarrow nat$}
+
+        \RightLabel{[\textsc{E-Vec-Type}]}
+
+        \BinaryInfC{$\Gamma,\Phi \vdash Vector\ A\ n \Uparrow U$}
+    \end{prooftree}
+
+    % Empty vector (checking only)
+    \begin{prooftree}
+        \AxiomC{}
+
+        \RightLabel{[\textsc{E-Nil-Chk}]}
+
+        \UnaryInfC{$\Gamma,\Phi \vdash [] \Downarrow Vector\ A\ zero$}
+    \end{prooftree}
+
+    % Vector cons
+    \begin{prooftree}
+        \AxiomC{$\Gamma,\Phi \vdash a \Downarrow A$}
+        \AxiomC{$\Gamma,\Phi \vdash as \Downarrow Vector\ A\ n$}
+
+        \RightLabel{[\textsc{E-Cons}]}
+
+        \BinaryInfC{$\Gamma,\Phi \vdash a :: as \Uparrow Vector\ A\ (suc\ n)$}
+    \end{prooftree}
+
+    % Vector operations
+    \begin{multicols}{2}
+        \begin{prooftree}
+            \AxiomC{$\Gamma,\Phi \vdash v \Uparrow Vector\ A\ (suc\ n)$}
+
+            \RightLabel{[\textsc{E-Head}]}
+
+            \UnaryInfC{$\Gamma,\Phi \vdash head\ v \Uparrow A$}
+        \end{prooftree}
+
+        \columnbreak
+
+        \begin{prooftree}
+            \AxiomC{$\Gamma,\Phi \vdash v \Uparrow Vector\ A\ (suc\ n)$}
+
+            \RightLabel{[\textsc{E-Tail}]}
+
+            \UnaryInfC{$\Gamma,\Phi \vdash tail\ v \Uparrow Vector\ A\ n$}
+        \end{prooftree}
+    \end{multicols}
+
+    % Vector append
+    \begin{prooftree}
+        \AxiomC{$\Gamma,\Phi \vdash v_1 \Uparrow Vector\ A\ m$}
+        \AxiomC{$\Gamma,\Phi \vdash v_2 \Uparrow Vector\ A\ n$}
+
+        \RightLabel{[\textsc{E-Append}]}
+
+        \BinaryInfC{$\Gamma,\Phi \vdash append\ v_1\ v_2 \Uparrow Vector\ A\ (m + n)$}
+    \end{prooftree}
+
+    % Bidirectional switch rule -------------------------
+
+    \begin{prooftree}
+        \AxiomC{$\Gamma,\Phi \vdash e \Uparrow \tau'$}
+        \AxiomC{$\tau' = \tau$}
+
+        \RightLabel{[\textsc{E-Switch}]}
+
+        \BinaryInfC{$\Gamma,\Phi \vdash e \Downarrow \tau$}
+    \end{prooftree}
+        
+    \caption{Typing rules for expressions}
+    \label{fig:tr-expr}
+\end{figure}

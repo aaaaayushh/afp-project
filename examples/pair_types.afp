@@ -1,0 +1,5 @@
+fun swap (p : [nat, bool]) = (snd p, fst p);
+val my_pair : [nat, bool] = (suc zero, True);
+val swapped_pair = swap my_pair;
+
+swapped_pair 

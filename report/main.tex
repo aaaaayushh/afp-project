@@ -1,0 +1,50 @@
+\documentclass[a4paper]{article}
+\usepackage{xcolor, colortbl}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{bussproofs}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{multicol}
+\usepackage[nameinlink]{cleveref}
+\usepackage{listings}
+\usepackage{subcaption}
+
+\usepackage[
+    backend=biber,
+    style=ieee
+]{biblatex}
+\addbibresource{sources.bib}
+
+\crefname{lstlisting}{listing}{listings}
+\Crefname{lstlisting}{Listing}{Listings}
+
+\lstset{
+    frame=single,
+    framesep=5pt,
+    basicstyle=\ttfamily,
+    tabsize=2,
+    inputencoding=utf8,
+    extendedchars=true,
+    morekeywords={val, fun, let, lam},
+    keywordstyle=\color{red}
+}
+
+\title{\textbf{AFP Project:} A Simple Type System}
+\author{Your Name}
+
+\begin{document}
+
+\maketitle
+
+Please provide a report detailing the design and implementation of your language with your chosen type system.
+The introduction should include a brief overview of the language features you implemented.
+Make sure to follow the structure in this template and include any relevant references \cite{klabnik_understanding_2021,weirich_implementing_2023}.
+
+\input{sections/design.tex}
+\input{sections/typing_rules.tex}
+\input{sections/techniques.tex}
+
+\printbibliography[heading=bibintoc, title={References}]
+
+\end{document}

@@ -22,7 +22,7 @@ convertStmts = convertStmts' []
             _ -> ctx -- Functions don't add to variable context
        in dbStmt : convertStmts' newCtx stmts
 
--- DE BRUIJN PROGRAM INTERPRETER -----------------------------------------------------
+-- DE BRUIJN PROGRAM INTERPRETER
 
 interp :: Program -> (DBEnv Value, FunEnv Closure) -> Result Value
 interp (Program stmts exp) env = do

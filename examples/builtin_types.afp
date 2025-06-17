@@ -1,0 +1,3 @@
+val x : Top = tt;
+fun use_magic (b: Bot) = magic b;
+tt

@@ -1,0 +1,1 @@
+elimBool (\(b: bool) -> if b then nat else bool) (suc zero) (False) (True) 

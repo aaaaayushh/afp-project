@@ -1,0 +1,5 @@
+fun alwaysNat (b : bool) = elimBool (\(x : bool) -> nat) (suc zero) (suc (suc zero)) b;
+val test_true = alwaysNat (True);
+val test_false = alwaysNat (False);
+
+test_false 

@@ -1,0 +1,44 @@
+\section{Typing Rules}
+
+Please provide the typing rules for your language.
+\Cref{fig:tr-expr,fig:tr-stmt,fig:tr-prog} show the current typing rules for programs, statements, and expressions.
+They should be read in the following way:
+
+\vspace{1em}
+\begin{tabular}{r | l}
+    $\Gamma,\Phi \vdash e \Uparrow \tau$                    & expression $e$ in context $\Gamma,\Phi$ \textbf{infers} type $\tau$ \\
+    $\Gamma,\Phi \vdash e \Downarrow \tau$                  & expression $e$ in context $\Gamma,\Phi$ \textbf{checks} against type $\tau$ \\
+    $\Gamma,\Phi \vdash s\ \triangleright\ \Gamma_s,\Phi_s$ & statement $s$ in context $\Gamma,\Phi$ produces a new context $\Gamma_s,\Phi_s$\\
+    $\Gamma,\Phi \vdash p \blacktriangleright \tau$  & program $p$ in context $\Gamma,\Phi$ outputs a value of type $\tau$ \\
+    $\Gamma[x \mapsto \tau]$                         & variable context $\Gamma$ extended with $x$ of type $\tau$ \\
+    $\Gamma[\tau]$                                   & variable context $\Gamma$ extended with an anonymous variable of type $\tau$ \\
+    $\Phi[f \mapsto \sigma]$                         & function context $\Phi$ extended with $f$ of type $\sigma$ \\
+    $\Gamma[i] = \tau$                               & De Bruijn index $i$ is bound to type $\tau$ in context $\Gamma$ \\
+    $(f : \sigma) \in \Phi$                          & $f$ is bound to type $\sigma$ in function context $\Phi$ \\
+    $\llbracket e \rrbracket = v$                    & expression $e$ evaluates to value $v$ \\
+    $B[v/x]$                                         & type expression $B$ with value $v$ substituted for variable $x$ \\
+\end{tabular}
+
+\input{figures/trules/prog.tex}
+\input{figures/trules/stmt.tex}
+\input{figures/trules/expr.tex}
+
+\vspace{1em}\noindent
+\textbf{Key Features of the Type System:}
+
+\begin{itemize}
+    \item \textbf{Bidirectional Type Checking}: The type system uses bidirectional type checking with inference ($\Uparrow$) and checking ($\Downarrow$) modes. Most expressions can have their types inferred, but some constructs (like lambda expressions and empty vectors) can only be checked against an expected type.
+    
+    \item \textbf{Dependent Types}: Function types can depend on values, written as $(x : A) \to B$ where $B$ may reference $x$. The type checker performs evaluation during type checking to compute dependent types.
+    
+    \item \textbf{Universe Hierarchy}: All types have type $U$, and $U$ itself has type $U$ (type-in-type). This enables polymorphism and dependent typing.
+    
+    \item \textbf{De Bruijn Indices}: Variables are represented internally using De Bruijn indices ($x_i$) where $i$ is the distance to the binder, eliminating variable name conflicts.
+    
+    \item \textbf{Evaluation During Type Checking}: Rules like E-DepApp and E-ElimBool require the type checker to evaluate expressions (denoted by $\llbracket e \rrbracket = v$) to compute the final type.
+    
+    \item \textbf{Length-Indexed Vectors}: Vector types $Vector\ A\ n$ track their length $n$ at the type level, enabling safe operations like $head$ and $tail$ that are only valid on non-empty vectors.
+\end{itemize}
+
+\vspace{1em}\noindent
+\textbf{Include only the typing rules that differ from these initial ones.}
